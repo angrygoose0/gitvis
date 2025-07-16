@@ -47,7 +47,7 @@
   - Implement data caching strategy
   - _Requirements: 6.2, 6.4, 2.1, 2.2_
 
-- [ ] 8. Extract CommitNode component
+- [x] 8. Extract CommitNode component
   - Create `CommitNode.tsx` for individual commit rendering
   - Move commit node rendering logic from DraggableNode
   - Implement commit animations and styling

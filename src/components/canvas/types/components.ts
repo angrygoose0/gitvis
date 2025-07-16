@@ -37,3 +37,25 @@ export interface DraggableCanvasProps {
   owner?: string;
   repo?: string;
 }
+
+export interface CommitNodeProps {
+  commit: {
+    sha: string;
+    commit: {
+      message: string;
+      author: {
+        name: string;
+        date: string;
+      };
+    };
+  };
+  index: number;
+  totalCommits: number;
+  animationTime: number;
+  scale: number;
+  branchPosition: Position;
+  scaledRadius: number;
+  scaledCommitRadius: number;
+  textOpacity: number;
+  commitTextOpacity: number;
+}

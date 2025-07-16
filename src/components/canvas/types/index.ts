@@ -26,4 +26,5 @@ export type {
   DraggableCardProps,
   ConnectionLineProps,
   DraggableCanvasProps,
+  CommitNodeProps,
 } from './components';

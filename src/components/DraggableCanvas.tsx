@@ -5,6 +5,7 @@ import { formatDate } from './canvas/utils/date-formatter';
 import { worldToScreen, screenToWorld, mouseToWorld, getNodeBounds } from './canvas/utils/coordinate-transformer';
 import { calculateTreeLayout } from './canvas/utils/layout-calculator';
 import { calculateBranchTree } from './canvas/services/branch-analyzer';
+import { CommitNode } from './canvas/components/CommitNode';
 
 // Add custom styles for scrollbar
 const customStyles = `
@@ -300,25 +301,7 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
     }
   };
 
-  // Calculate positions for commit nodes in a circle around the branch with orbiting animation
-  const getCommitNodePosition = (index: number, total: number, animationTime: number = 0) => {
-    const angleStep = (2 * Math.PI) / total;
-    const baseAngle = angleStep * index - Math.PI / 2; // Start from top
 
-    // Add smooth orbiting animation with varying speeds for organic feel
-
-
-    const orbitSpeed = 0.00015;
-    const animationAngle = animationTime * orbitSpeed;
-
-    const finalAngle = baseAngle + animationAngle;
-    const distance = 30;
-
-    return {
-      x: Math.cos(finalAngle) * distance,
-      y: Math.sin(finalAngle) * distance
-    };
-  };
 
   return (
     <div
@@ -411,57 +394,21 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
       {/* Commit nodes - shown as small circles around the branch */}
       {isExpanded && branch.commits && branch.commits.length > 0 && !isLoadingCommits && (
         <>
-          {branch.commits.slice(0, 8).map((commit, index) => {
-            const commitPos = getCommitNodePosition(index, Math.min(branch.commits?.length || 0, 8), animationTime);
-
-            return (
-              <div
-                key={commit.sha}
-                className="absolute pointer-events-none"
-                style={{
-                  left: `${scaledRadius + commitPos.x * scale - scaledCommitRadius}px`,
-                  top: `${scaledRadius + commitPos.y * scale - scaledCommitRadius}px`,
-                  width: `${scaledCommitRadius * 2}px`,
-                  height: `${scaledCommitRadius * 2}px`,
-                  opacity: textOpacity > 0.3 ? 1 : 0,
-                  transition: 'opacity 0.3s ease-in-out',
-                }}
-              >
-                {/* Connecting line to parent */}
-                {/* (REMOVED: SVG dotted line to parent) */}
-
-                {/* Commit node circle - also made glowing */}
-                <div
-                  className="absolute inset-0 rounded-full bg-gray-600 border border-gray-500/50 transition-all duration-200"
-                  style={{
-                    boxShadow: '0 0 8px rgba(156, 163, 175, 0.5), inset 0 0 4px rgba(156, 163, 175, 0.3)',
-                    background: 'radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2), rgba(156, 163, 175, 0.8))',
-                  }}
-                  title={commit.commit.message}
-                >
-                </div>
-
-                {/* Commit text - appears when zoomed in */}
-                <div
-                  className="absolute left-1/2 transform -translate-x-1/2 pointer-events-none whitespace-nowrap"
-                  style={{
-                    top: `${scaledCommitRadius * 2 + 4}px`,
-                    opacity: commitTextOpacity,
-                    transition: 'opacity 0.2s ease-in-out',
-                  }}
-                >
-                  <div className="bg-gray-900/90 backdrop-blur-sm px-1.5 py-0.5 rounded border border-gray-700/50">
-                    <p className="text-xs text-gray-300 max-w-[150px] truncate">
-                      {commit.commit.message.split('\n')[0]}
-                    </p>
-                    <p className="text-xs text-gray-500 font-mono">
-                      {commit.sha.substring(0, 7)} • {commit.commit.author.name.split(' ')[0]}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {branch.commits.slice(0, 8).map((commit, index) => (
+            <CommitNode
+              key={commit.sha}
+              commit={commit}
+              index={index}
+              totalCommits={Math.min(branch.commits?.length || 0, 8)}
+              animationTime={animationTime}
+              scale={scale}
+              branchPosition={position}
+              scaledRadius={scaledRadius}
+              scaledCommitRadius={scaledCommitRadius}
+              textOpacity={textOpacity}
+              commitTextOpacity={commitTextOpacity}
+            />
+          ))}
         </>
       )}
     </div>
