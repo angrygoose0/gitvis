@@ -1,6 +1,9 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { formatDate } from './canvas/utils/date-formatter';
+import { worldToScreen, screenToWorld, mouseToWorld, getNodeBounds } from './canvas/utils/coordinate-transformer';
+import { calculateTreeLayout } from './canvas/utils/layout-calculator';
 
 // Add custom styles for scrollbar
 const customStyles = `
@@ -167,28 +170,7 @@ const COLLISION_RADIUS = 30; // Effective radius for collision detection between
 const FRICTION = 0.95; // Deceleration factor
 const MIN_VELOCITY = 0.1; // Minimum velocity before stopping
 
-// Helper function to format dates
-const formatDate = (dateString: string): string => {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-  if (diffDays === 0) {
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    if (diffHours === 0) {
-      const diffMinutes = Math.floor(diffMs / (1000 * 60));
-      return `${diffMinutes} minutes ago`;
-    }
-    return `${diffHours} hours ago`;
-  } else if (diffDays === 1) {
-    return 'yesterday';
-  } else if (diffDays < 30) {
-    return `${diffDays} days ago`;
-  } else {
-    return date.toLocaleDateString();
-  }
-};
 
 const DraggableNode: React.FC<DraggableCardProps> = ({
   id,
@@ -212,10 +194,7 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
   const nodeRef = useRef<HTMLDivElement>(null);
 
   // Calculate screen position from world position
-  const screenPosition = {
-    x: position.x * scale + offset.x,
-    y: position.y * scale + offset.y
-  };
+  const screenPosition = worldToScreen(position, scale, offset);
 
   // Calculate scaled radius
   const scaledRadius = NODE_RADIUS * scale;
@@ -268,10 +247,7 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
         e.preventDefault();
         const rect = nodeRef.current?.getBoundingClientRect();
         if (rect) {
-          const worldPosition = {
-            x: (e.clientX - offset.x) / scale,
-            y: (e.clientY - offset.y) / scale
-          };
+          const worldPosition = screenToWorld({ x: e.clientX, y: e.clientY }, scale, offset);
 
           // Notify parent about branch creation start
           if ((window as any).onBranchCreationStart) {
@@ -295,10 +271,7 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
           // Set up mouse event handlers immediately with captured values
           const handleMouseMove = (moveEvent: MouseEvent) => {
             // Convert screen coordinates to world coordinates
-            const worldPosition = {
-              x: (moveEvent.clientX - dragOffset.x - offset.x) / scale,
-              y: (moveEvent.clientY - dragOffset.y - offset.y) / scale
-            };
+            const worldPosition = mouseToWorld(moveEvent.clientX, moveEvent.clientY, scale, offset, dragOffset);
             onDrag(id, worldPosition);
           };
 
@@ -721,70 +694,7 @@ const calculateBranchTree = async (
   return { branches: updatedBranches, connections };
 };
 
-// Helper function to calculate tree layout positions
-const calculateTreeLayout = (
-  branches: Branch[],
-  canvasWidth: number = 1200,
-  canvasHeight: number = 800,
-  alignment: 'horizontal' | 'vertical' | 'radial' = 'horizontal'
-): Record<string, Position> => {
-  const positions: Record<string, Position> = {};
-  const horizontalSpacing = 200;
-  const verticalSpacing = 150;
-  const startX = 100;
-  const startY = 100;
 
-  // Group branches by depth
-  const branchesByDepth = new Map<number, Branch[]>();
-  branches.forEach(branch => {
-    const depth = branch.depth || 0;
-    if (!branchesByDepth.has(depth)) {
-      branchesByDepth.set(depth, []);
-    }
-    branchesByDepth.get(depth)?.push(branch);
-  });
-
-  if (alignment === 'horizontal') {
-    // Default: horizontal tree (current)
-    branchesByDepth.forEach((branchesAtDepth, depth) => {
-      const y = startY + depth * verticalSpacing;
-      const totalWidth = (branchesAtDepth.length - 1) * horizontalSpacing;
-      const startXForDepth = (canvasWidth - totalWidth) / 2;
-      branchesAtDepth.forEach((branch, index) => {
-        const x = startXForDepth + index * horizontalSpacing;
-        positions[branch.name] = { x, y };
-      });
-    });
-  } else if (alignment === 'vertical') {
-    // Vertical tree
-    branchesByDepth.forEach((branchesAtDepth, depth) => {
-      const x = startX + depth * horizontalSpacing;
-      const totalHeight = (branchesAtDepth.length - 1) * verticalSpacing;
-      const startYForDepth = (canvasHeight - totalHeight) / 2;
-      branchesAtDepth.forEach((branch, index) => {
-        const y = startYForDepth + index * verticalSpacing;
-        positions[branch.name] = { x, y };
-      });
-    });
-  } else if (alignment === 'radial') {
-    // Radial layout
-    const maxDepth = Math.max(...branches.map(b => b.depth || 0));
-    const centerX = canvasWidth / 2;
-    const centerY = canvasHeight / 2;
-    const radiusStep = Math.min(canvasWidth, canvasHeight) / (2 * (maxDepth + 2));
-    branchesByDepth.forEach((branchesAtDepth, depth) => {
-      const radius = radiusStep * (depth + 1);
-      const angleStep = (2 * Math.PI) / branchesAtDepth.length;
-      branchesAtDepth.forEach((branch, index) => {
-        const angle = angleStep * index - Math.PI / 2;
-        const x = centerX + Math.cos(angle) * radius;
-        const y = centerY + Math.sin(angle) * radius;
-        positions[branch.name] = { x, y };
-      });
-    });
-  }
-  return positions;
-};
 
 // Component to draw connection lines between branches
 interface ConnectionLineProps {
@@ -798,15 +708,8 @@ interface ConnectionLineProps {
 
 const ConnectionLine: React.FC<ConnectionLineProps> = ({ from, to, scale, offset, pullRequest, commitCount = 0 }) => {
   // Calculate screen positions (center of nodes)
-  const fromScreen = {
-    x: from.x * scale + offset.x,
-    y: from.y * scale + offset.y
-  };
-
-  const toScreen = {
-    x: to.x * scale + offset.x,
-    y: to.y * scale + offset.y
-  };
+  const fromScreen = worldToScreen(from, scale, offset);
+  const toScreen = worldToScreen(to, scale, offset);
 
   // Calculate the angle and distance
   const dx = toScreen.x - fromScreen.x;
