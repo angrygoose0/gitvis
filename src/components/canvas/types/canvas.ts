@@ -43,4 +43,7 @@ export interface CardPhysics {
   isLoadingCommits: boolean;
   isDragTarget: boolean;
   animationTime: number;
+  lastDragPosition?: Position;
+  originalPosition?: Position;
+  returnTo?: Position;
 }

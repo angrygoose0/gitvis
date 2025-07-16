@@ -33,7 +33,7 @@
   - Handle mouse and touch events for canvas interactions
   - _Requirements: 5.1, 5.3, 5.4, 2.1_
 
-- [ ] 6. Create physics engine hook
+- [x] 6. Create physics engine hook
   - Create `usePhysicsEngine.ts` for node physics and animations
   - Extract velocity calculations and collision detection
   - Implement animation frame management
