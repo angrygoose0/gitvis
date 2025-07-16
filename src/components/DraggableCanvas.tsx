@@ -2727,8 +2727,8 @@ export default function DraggableCanvas({
               <button
                 onClick={() => setActiveTab('prs')}
                 className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 ${activeTab === 'prs'
-                    ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/10'
-                    : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
+                  ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/10'
+                  : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
                   }`}
               >
                 <div className="flex items-center justify-center gap-2">
@@ -2746,8 +2746,8 @@ export default function DraggableCanvas({
               <button
                 onClick={() => setActiveTab('issues')}
                 className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 ${activeTab === 'issues'
-                    ? 'text-orange-400 border-b-2 border-orange-400 bg-orange-500/10'
-                    : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
+                  ? 'text-orange-400 border-b-2 border-orange-400 bg-orange-500/10'
+                  : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
                   }`}
               >
                 <div className="flex items-center justify-center gap-2">
