@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "Feature Branch Creator",
-  "description": "Monitors for major feature implementation and automatically creates a new branch for the feature",
+  "description": "Everytime a new major feature is being planned, create a new branch using github, and use that branch.",
   "version": "1",
   "when": {
     "type": "fileEdited",

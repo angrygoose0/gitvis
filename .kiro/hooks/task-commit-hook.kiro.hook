@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "name": "Task Completion Commit",
+  "description": "Automatically commits changes to the current GitHub branch whenever a task is completed",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/**/*.tsx",
+      "src/**/*.ts",
+      "src/**/*.js",
+      "src/**/*.jsx",
+      "*.md",
+      "package.json"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A task has been completed. Please commit all current changes to the GitHub repository on the current branch with an appropriate commit message that describes what was accomplished."
+  }
+}
