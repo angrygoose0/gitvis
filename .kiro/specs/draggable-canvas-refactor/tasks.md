@@ -54,7 +54,7 @@
   - Handle commit node interactions
   - _Requirements: 4.1, 4.2, 4.3, 7.1, 7.4_
 
-- [ ] 9. Extract ConnectionLine component
+- [x] 9. Extract ConnectionLine component
   - Create standalone `ConnectionLine.tsx` component
   - Move connection line rendering logic
   - Implement pull request status visualization

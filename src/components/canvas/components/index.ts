@@ -8,4 +8,4 @@
 // Node components will be exported here
 // export { CanvasNode } from './CanvasNode';
 export { CommitNode } from './CommitNode';
-// export { ConnectionLine } from './ConnectionLine';
+export { ConnectionLine } from './ConnectionLine';
