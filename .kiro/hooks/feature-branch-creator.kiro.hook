@@ -1,0 +1,19 @@
+{
+  "enabled": true,
+  "name": "Feature Branch Creator",
+  "description": "Monitors for major feature implementation and automatically creates a new branch for the feature",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "PULL_REQUEST_FEATURE.md",
+      "src/app/**/*.tsx",
+      "src/components/**/*.tsx",
+      "package.json"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A major feature is being implemented. Analyze the recent changes to determine what feature is being added, then create a new git branch with an appropriate name for this feature. Use the format 'feature/feature-name' for the branch name."
+  }
+}
