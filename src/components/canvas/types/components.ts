@@ -24,6 +24,24 @@ export interface DraggableCardProps {
   onDoubleClick?: (id: string) => void;
 }
 
+export interface CanvasNodeProps {
+  id: string;
+  branch: Branch;
+  position: Position;
+  isDragging: boolean;
+  scale: number;
+  offset: Position;
+  isSpacePressed: boolean;
+  isExpanded: boolean;
+  isLoadingCommits: boolean;
+  isDragTarget: boolean;
+  animationTime: number;
+  onStartDrag: (id: string, position: Position) => void;
+  onDrag: (id: string, position: Position) => void;
+  onEndDrag: (id: string) => void;
+  onDoubleClick?: (id: string) => void;
+}
+
 export interface ConnectionLineProps {
   from: Position;
   to: Position;

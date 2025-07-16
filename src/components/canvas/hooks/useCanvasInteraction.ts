@@ -37,7 +37,7 @@ export interface CanvasInteractionReturn {
   mouseToWorldCoords: (clientX: number, clientY: number, dragOffset?: Position) => Position;
   
   // Canvas ref
-  canvasRef: React.RefObject<HTMLDivElement>;
+  canvasRef: React.RefObject<HTMLDivElement | null>;
 }
 
 const DEFAULT_CONFIG: Required<CanvasInteractionConfig> = {

@@ -61,7 +61,7 @@
   - Add animation effects for commit flow
   - _Requirements: 4.1, 4.2, 7.1, 7.4_
 
-- [ ] 10. Extract CanvasNode component
+- [x] 10. Extract CanvasNode component
   - Create `CanvasNode.tsx` for branch node rendering
   - Move node rendering logic from DraggableNode
   - Integrate with CommitNode component

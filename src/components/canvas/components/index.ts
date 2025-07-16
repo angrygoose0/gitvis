@@ -6,6 +6,6 @@
 // export { DraggableCanvas } from './DraggableCanvas';
 
 // Node components will be exported here
-// export { CanvasNode } from './CanvasNode';
+export { CanvasNode } from './CanvasNode';
 export { CommitNode } from './CommitNode';
 export { ConnectionLine } from './ConnectionLine';
