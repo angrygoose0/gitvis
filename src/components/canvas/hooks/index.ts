@@ -8,5 +8,5 @@ export * from './useCanvasInteraction';
 // Physics engine hook
 export * from './usePhysicsEngine';
 
-// GitHub data hook will be exported here
-// export * from './useGitHubData';
+// GitHub data hook
+export * from './useGitHubData';
