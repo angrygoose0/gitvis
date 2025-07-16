@@ -113,8 +113,8 @@ interface Branch {
         date: string;
       };
     };
-  }>; 
-  }
+  }>;
+}
 
 interface Collaborator {
   id: number;
@@ -151,6 +151,7 @@ interface DraggableCardProps {
   isExpanded: boolean;
   isLoadingCommits: boolean;
   isDragTarget: boolean; // Add this prop
+  animationTime: number; // Add animation time for orbiting commits
   onStartDrag: (id: string, position: Position) => void;
   onDrag: (id: string, position: Position) => void;
   onEndDrag: (id: string) => void;
@@ -172,7 +173,7 @@ const formatDate = (dateString: string): string => {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  
+
   if (diffDays === 0) {
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     if (diffHours === 0) {
@@ -189,9 +190,9 @@ const formatDate = (dateString: string): string => {
   }
 };
 
-const DraggableNode: React.FC<DraggableCardProps> = ({ 
-  id, 
-  branch, 
+const DraggableNode: React.FC<DraggableCardProps> = ({
+  id,
+  branch,
   position,
   velocity,
   isDragging,
@@ -201,6 +202,7 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
   isExpanded,
   isLoadingCommits,
   isDragTarget, // Add this
+  animationTime, // Add animation time
   onStartDrag,
   onDrag,
   onEndDrag,
@@ -220,14 +222,14 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
   const scaledCommitRadius = COMMIT_NODE_RADIUS * scale;
 
   // Calculate text opacity based on scale
-  const textOpacity = scale < MIN_SCALE_FOR_TEXT ? 0 : 
-    scale > MAX_SCALE_FOR_FULL_TEXT ? 1 : 
-    (scale - MIN_SCALE_FOR_TEXT) / (MAX_SCALE_FOR_FULL_TEXT - MIN_SCALE_FOR_TEXT);
+  const textOpacity = scale < MIN_SCALE_FOR_TEXT ? 0 :
+    scale > MAX_SCALE_FOR_FULL_TEXT ? 1 :
+      (scale - MIN_SCALE_FOR_TEXT) / (MAX_SCALE_FOR_FULL_TEXT - MIN_SCALE_FOR_TEXT);
 
   // Calculate commit text opacity
-  const commitTextOpacity = scale < MIN_SCALE_FOR_COMMIT_TEXT ? 0 : 
-    scale > MAX_SCALE_FOR_FULL_TEXT ? 1 : 
-    (scale - MIN_SCALE_FOR_COMMIT_TEXT) / (MAX_SCALE_FOR_FULL_TEXT - MIN_SCALE_FOR_COMMIT_TEXT);
+  const commitTextOpacity = scale < MIN_SCALE_FOR_COMMIT_TEXT ? 0 :
+    scale > MAX_SCALE_FOR_FULL_TEXT ? 1 :
+      (scale - MIN_SCALE_FOR_COMMIT_TEXT) / (MAX_SCALE_FOR_FULL_TEXT - MIN_SCALE_FOR_COMMIT_TEXT);
 
   // Determine node color based on branch status
   const getNodeColor = () => {
@@ -259,7 +261,7 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
     // Only start dragging node if space is NOT pressed
     if (!isSpacePressed) {
       e.stopPropagation(); // Prevent canvas pan
-      
+
       // Check if it's a right click
       if (e.button === 2) {
         // Right click - start branch creation
@@ -270,7 +272,7 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
             x: (e.clientX - offset.x) / scale,
             y: (e.clientY - offset.y) / scale
           };
-          
+
           // Notify parent about branch creation start
           if ((window as any).onBranchCreationStart) {
             (window as any).onBranchCreationStart(id, worldPosition, { x: e.clientX, y: e.clientY });
@@ -278,7 +280,7 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
         }
         return;
       }
-      
+
       // Left click - normal drag
       if (e.button === 0) {
         const rect = nodeRef.current?.getBoundingClientRect();
@@ -289,7 +291,7 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
             x: e.clientX - centerX,
             y: e.clientY - centerY
           });
-          
+
           // Set up mouse event handlers immediately with captured values
           const handleMouseMove = (moveEvent: MouseEvent) => {
             // Convert screen coordinates to world coordinates
@@ -310,7 +312,7 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
           // Add event listeners
           document.addEventListener('mousemove', handleMouseMove);
           document.addEventListener('mouseup', handleMouseUp);
-          
+
           onStartDrag(id, position);
         }
       }
@@ -324,15 +326,23 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
     }
   };
 
-  // Calculate positions for commit nodes in a circle around the branch
-  const getCommitNodePosition = (index: number, total: number) => {
+  // Calculate positions for commit nodes in a circle around the branch with orbiting animation
+  const getCommitNodePosition = (index: number, total: number, animationTime: number = 0) => {
     const angleStep = (2 * Math.PI) / total;
-    const angle = angleStep * index - Math.PI / 2; // Start from top
-    const distance = 60; // Distance from branch center
-    
+    const baseAngle = angleStep * index - Math.PI / 2; // Start from top
+
+    // Add smooth orbiting animation with varying speeds for organic feel
+
+
+    const orbitSpeed = 0.00015;
+    const animationAngle = animationTime * orbitSpeed;
+
+    const finalAngle = baseAngle + animationAngle;
+    const distance = 30;
+
     return {
-      x: Math.cos(angle) * distance,
-      y: Math.sin(angle) * distance
+      x: Math.cos(finalAngle) * distance,
+      y: Math.sin(finalAngle) * distance
     };
   };
 
@@ -353,40 +363,38 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
     >
       {/* Node circle */}
       <div
-        className={`absolute inset-0 rounded-full ${getNodeColor()} ${getNodeBorderColor()} border transition-all duration-200 ${
-          branch.aheadBy === 0 ? 'opacity-40' : ''
-        }`}
+        className={`absolute inset-0 rounded-full ${getNodeColor()} ${getNodeBorderColor()} border transition-all duration-200 ${branch.aheadBy === 0 ? 'opacity-40' : ''
+          }`}
         style={{
-          boxShadow: isDragTarget 
+          boxShadow: isDragTarget
             ? `0 0 40px ${getNodeGlowColor()}, 0 0 80px ${getNodeGlowColor()}, inset 0 0 30px ${getNodeGlowColor()}` // Bigger glow for drag target
-            : isDragging 
-            ? `0 0 30px ${getNodeGlowColor()}, 0 0 60px ${getNodeGlowColor()}, inset 0 0 20px ${getNodeGlowColor()}`
-            : `0 0 20px ${getNodeGlowColor()}, 0 0 40px ${getNodeGlowColor()}, inset 0 0 15px ${getNodeGlowColor()}`,
+            : isDragging
+              ? `0 0 30px ${getNodeGlowColor()}, 0 0 60px ${getNodeGlowColor()}, inset 0 0 20px ${getNodeGlowColor()}`
+              : `0 0 20px ${getNodeGlowColor()}, 0 0 40px ${getNodeGlowColor()}, inset 0 0 15px ${getNodeGlowColor()}`,
           transform: isDragTarget ? 'scale(1.5)' : isDragging ? 'scale(1.3)' : 'scale(1)', // Bigger scale for drag target
-          background: `radial-gradient(circle at 30% 30%, ${
-            branch.aheadBy === 0 ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.4)'
-          }, ${getNodeColor().replace('bg-', 'rgba(').replace('400', '400, 1)').replace('700', '700, 1)').replace('green', '74, 222, 128').replace('blue', '96, 165, 250').replace('purple', '196, 181, 253').replace('gray', '156, 163, 175').replace('orange', '251, 146, 60')})`,
+          background: `radial-gradient(circle at 30% 30%, ${branch.aheadBy === 0 ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.4)'
+            }, ${getNodeColor().replace('bg-', 'rgba(').replace('400', '400, 1)').replace('700', '700, 1)').replace('green', '74, 222, 128').replace('blue', '96, 165, 250').replace('purple', '196, 181, 253').replace('gray', '156, 163, 175').replace('orange', '251, 146, 60')})`,
         }}
       >
         {/* Inner glow effect */}
-        <div 
+        <div
           className="absolute inset-1 rounded-full"
           style={{
             background: `radial-gradient(circle at center, ${getNodeGlowColor()}, transparent)`,
             filter: 'blur(2px)',
           }}
         />
-        
+
         {/* Protected badge - made smaller */}
         {branch.protected && (
           <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-yellow-500 rounded-full flex items-center justify-center"
-               style={{ boxShadow: '0 0 10px rgba(250, 204, 21, 0.8)' }}>
+            style={{ boxShadow: '0 0 10px rgba(250, 204, 21, 0.8)' }}>
             <svg className="w-2 h-2 text-yellow-900" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
             </svg>
           </div>
         )}
-        
+
         {/* Loading indicator for commits - made smaller */}
         {isLoadingCommits && (
           <div className="absolute inset-0 rounded-full flex items-center justify-center">
@@ -430,8 +438,8 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
       {isExpanded && branch.commits && branch.commits.length > 0 && !isLoadingCommits && (
         <>
           {branch.commits.slice(0, 8).map((commit, index) => {
-            const commitPos = getCommitNodePosition(index, Math.min(branch.commits?.length || 0, 8));
-            
+            const commitPos = getCommitNodePosition(index, Math.min(branch.commits?.length || 0, 8), animationTime);
+
             return (
               <div
                 key={commit.sha}
@@ -447,7 +455,7 @@ const DraggableNode: React.FC<DraggableCardProps> = ({
               >
                 {/* Connecting line to parent */}
                 {/* (REMOVED: SVG dotted line to parent) */}
-                
+
                 {/* Commit node circle - also made glowing */}
                 <div
                   className="absolute inset-0 rounded-full bg-gray-600 border border-gray-500/50 transition-all duration-200"
@@ -497,7 +505,7 @@ const calculateBranchTree = async (
 ): Promise<{ branches: Branch[], connections: BranchConnection[] }> => {
   const branchMap = new Map<string, Branch>();
   const connections: BranchConnection[] = [];
-  
+
   // Initialize branch map
   branches.forEach(branch => {
     branchMap.set(branch.name, { ...branch, children: [] });
@@ -511,21 +519,21 @@ const calculateBranchTree = async (
   }
 
   const updatedBranches = Array.from(branchMap.values());
-  
+
   try {
     // Create a map to store branch relationships
     const branchRelationships = new Map<string, string>(); // child -> parent
     const mergedBranches = new Map<string, { mergedInto: string, aheadBy: number }>(); // Track merged branches with details
-    
+
     // First pass: Identify all merged branches
     for (const branch of updatedBranches) {
       if (branch.name === defaultBranch) continue;
-      
+
       // Check if branch is merged into default branch
       try {
         const compareUrl = `https://api.github.com/repos/${owner}/${repo}/compare/${defaultBranch}...${branch.name}`;
         const response = await fetch(compareUrl, { headers });
-        
+
         if (response.ok) {
           const compareData = await response.json();
           if (compareData.ahead_by === 0 && compareData.behind_by >= 0) {
@@ -535,15 +543,15 @@ const calculateBranchTree = async (
       } catch (error) {
         console.warn(`Error comparing ${branch.name} with ${defaultBranch}:`, error);
       }
-      
+
       await new Promise(resolve => setTimeout(resolve, 50)); // Rate limit delay
     }
-    
+
     // Sort branches by name to ensure consistent ordering
     const sortedBranches = updatedBranches
       .filter(b => b.name !== defaultBranch)
       .sort((a, b) => a.name.localeCompare(b.name));
-    
+
     // Second pass: Determine parent-child relationships
     for (const branch of sortedBranches) {
       // Check if we have an existing relationship for this branch
@@ -552,7 +560,7 @@ const calculateBranchTree = async (
         const existingParent = existingRelationships[branch.name];
         if (updatedBranches.some(b => b.name === existingParent)) {
           branchRelationships.set(branch.name, existingParent);
-          
+
           // Mark branch as merged if detected
           // const branchToUpdate = branchMap.get(branch.name);
           // if (branchToUpdate && mergedBranches.has(branch.name)) {
@@ -561,28 +569,28 @@ const calculateBranchTree = async (
           continue; // Skip to next branch
         }
       }
-      
+
       let bestParent = defaultBranch;
       let bestScore = -Infinity;
       let shortestDistance = Infinity;
-      
+
       // Skip if this branch is already identified as merged
       const mergedInfo = mergedBranches.get(branch.name);
-      
+
       // Compare with all potential parent branches
-      const potentialParents = updatedBranches.filter(b => 
-        b.name !== branch.name && 
+      const potentialParents = updatedBranches.filter(b =>
+        b.name !== branch.name &&
         !mergedBranches.has(b.name) // Don't use merged branches as parents
       );
-      
+
       for (const candidate of potentialParents) {
         try {
           const compareUrl = `https://api.github.com/repos/${owner}/${repo}/compare/${candidate.name}...${branch.name}`;
           const response = await fetch(compareUrl, { headers });
-          
+
           if (response.ok) {
             const compareData = await response.json();
-            
+
             // If branch is ahead and not behind, it's a potential child
             if (compareData.ahead_by > 0 && compareData.behind_by === 0) {
               // Prefer parents with fewer commits between (shorter distance)
@@ -601,20 +609,20 @@ const calculateBranchTree = async (
         } catch (error) {
           console.warn(`Error comparing ${branch.name} with ${candidate.name}:`, error);
         }
-        
+
         await new Promise(resolve => setTimeout(resolve, 50)); // Rate limit delay
       }
-      
+
       // Set the parent relationship
       branchRelationships.set(branch.name, bestParent);
-      
+
       // Mark branch as merged if detected
       // const branchToUpdate = branchMap.get(branch.name);
       // if (branchToUpdate && mergedBranches.has(branch.name)) {
       //   branchToUpdate.isMerged = true;
       // }
     }
-    
+
     // Third pass: Determine aheadBy for each branch
     for (const branch of sortedBranches) {
       const parent = branchRelationships.get(branch.name) || defaultBranch;
@@ -638,33 +646,33 @@ const calculateBranchTree = async (
       }
       await new Promise(resolve => setTimeout(resolve, 50)); // Rate limit delay
     }
-    
+
     // Build the tree structure based on relationships
     updatedBranches.forEach(branch => {
       if (branch.name === defaultBranch) return;
-      
+
       const parent = branchRelationships.get(branch.name) || defaultBranch;
       branch.parent = parent;
-      
+
       // Calculate depth
       let depth = 1;
       let currentParent: string | undefined = parent;
       const visited = new Set<string>(); // Prevent infinite loops
-      
+
       while (currentParent && currentParent !== defaultBranch && !visited.has(currentParent)) {
         visited.add(currentParent);
         depth++;
         currentParent = branchRelationships.get(currentParent);
       }
       branch.depth = Math.min(depth, 5); // Cap depth at 5 for visualization
-      
+
       // Get commit count for this connection (will be calculated later when commits are fetched)
-      connections.push({ 
+      connections.push({
         from: branch.name,  // Changed: from child
         to: parent,         // Changed: to parent
         commitCount: 0 // Will be updated when commits are fetched
       });
-      
+
       // Update parent's children
       const parentBranch = branchMap.get(parent);
       if (parentBranch) {
@@ -672,10 +680,10 @@ const calculateBranchTree = async (
         parentBranch.children.push(branch.name);
       }
     });
-    
+
   } catch (error) {
     console.error('Error analyzing branch relationships:', error);
-    
+
     // Fallback: Simple heuristic based on branch names
     const fallbackPatterns = {
       develop: /^(develop|dev|development)$/i,
@@ -683,25 +691,25 @@ const calculateBranchTree = async (
       bugfix: /^(bugfix|fix|hotfix)\//i,
       release: /^(release|rel)\//i,
     };
-    
+
     updatedBranches.forEach(branch => {
       if (branch.name === defaultBranch) return;
-      
+
       let parent = defaultBranch;
       let depth = 1;
-      
+
       // Check if there's a develop branch and this might branch from it
       const developBranch = updatedBranches.find(b => fallbackPatterns.develop.test(b.name));
       if (developBranch && (fallbackPatterns.feature.test(branch.name) || fallbackPatterns.bugfix.test(branch.name))) {
         parent = developBranch.name;
         depth = 2;
       }
-      
+
       branch.parent = parent;
       branch.depth = depth;
       branch.aheadBy = 1; // Default to 1 in fallback
       connections.push({ from: parent, to: branch.name });
-      
+
       const parentBranch = branchMap.get(parent);
       if (parentBranch) {
         parentBranch.children = parentBranch.children || [];
@@ -794,7 +802,7 @@ const ConnectionLine: React.FC<ConnectionLineProps> = ({ from, to, scale, offset
     x: from.x * scale + offset.x,
     y: from.y * scale + offset.y
   };
-  
+
   const toScreen = {
     x: to.x * scale + offset.x,
     y: to.y * scale + offset.y
@@ -816,7 +824,7 @@ const ConnectionLine: React.FC<ConnectionLineProps> = ({ from, to, scale, offset
     x: toScreen.x - Math.cos(angle) * nodeRadius,
     y: toScreen.y - Math.sin(angle) * nodeRadius
   };
-  
+
   // Determine stroke color based on pull request state
   const getStrokeColor = () => {
     if (pullRequest) {
@@ -855,41 +863,41 @@ const ConnectionLine: React.FC<ConnectionLineProps> = ({ from, to, scale, offset
           <stop offset="90%" stopColor={`rgba(${strokeColorRGB}, ${glowIntensity})`} />
           <stop offset="100%" stopColor={`rgba(${strokeColorRGB}, 0)`} />
         </linearGradient>
-        
+
         {/* Animated gradient for pull requests */}
         {pullRequest && (
           <linearGradient id={`pr-pulse-${pullRequest.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor={`rgba(${strokeColorRGB}, 0)`}>
-              <animate attributeName="stop-color" 
-                values={`rgba(${strokeColorRGB}, 0);rgba(${strokeColorRGB}, 0.8);rgba(${strokeColorRGB}, 0)`} 
-                dur="2s" 
+              <animate attributeName="stop-color"
+                values={`rgba(${strokeColorRGB}, 0);rgba(${strokeColorRGB}, 0.8);rgba(${strokeColorRGB}, 0)`}
+                dur="2s"
                 repeatCount="indefinite" />
             </stop>
             <stop offset="50%" stopColor={`rgba(${strokeColorRGB}, 0.8)`}>
-              <animate attributeName="stop-color" 
-                values={`rgba(${strokeColorRGB}, 0.8);rgba(${strokeColorRGB}, 0);rgba(${strokeColorRGB}, 0.8)`} 
-                dur="2s" 
+              <animate attributeName="stop-color"
+                values={`rgba(${strokeColorRGB}, 0.8);rgba(${strokeColorRGB}, 0);rgba(${strokeColorRGB}, 0.8)`}
+                dur="2s"
                 repeatCount="indefinite" />
             </stop>
             <stop offset="100%" stopColor={`rgba(${strokeColorRGB}, 0)`}>
-              <animate attributeName="stop-color" 
-                values={`rgba(${strokeColorRGB}, 0);rgba(${strokeColorRGB}, 0.8);rgba(${strokeColorRGB}, 0)`} 
-                dur="2s" 
+              <animate attributeName="stop-color"
+                values={`rgba(${strokeColorRGB}, 0);rgba(${strokeColorRGB}, 0.8);rgba(${strokeColorRGB}, 0)`}
+                dur="2s"
                 repeatCount="indefinite" />
             </stop>
           </linearGradient>
         )}
-        
+
         {/* Glow filter */}
         <filter id={`glow-${from.x}-${from.y}-${to.x}-${to.y}`}>
-          <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+          <feGaussianBlur stdDeviation="3" result="coloredBlur" />
           <feMerge>
-            <feMergeNode in="coloredBlur"/>
-            <feMergeNode in="SourceGraphic"/>
+            <feMergeNode in="coloredBlur" />
+            <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
       </defs>
-      
+
       {/* Glow layer - wider and more blurred */}
       <line
         x1={fromEdge.x}
@@ -900,7 +908,7 @@ const ConnectionLine: React.FC<ConnectionLineProps> = ({ from, to, scale, offset
         strokeWidth={pullRequest ? 8 : 6}
         filter={`url(#glow-${from.x}-${from.y}-${to.x}-${to.y})`}
       />
-      
+
       {/* Main line */}
       <line
         x1={fromEdge.x}
@@ -912,35 +920,35 @@ const ConnectionLine: React.FC<ConnectionLineProps> = ({ from, to, scale, offset
         strokeLinecap="round"
         opacity={0.8}
       />
-      
+
       {/* Animated energy pulses for active connections - one per commit */}
       {commitCount > 0 && (
         <>
           {Array.from({ length: numPulses }).map((_, index) => (
-            <circle 
+            <circle
               key={`pulse-${index}`}
-              r="3" 
-              fill={`rgba(${strokeColorRGB}, 0.8)`} 
+              r="3"
+              fill={`rgba(${strokeColorRGB}, 0.8)`}
               filter={`url(#glow-${from.x}-${from.y}-${to.x}-${to.y})`}
             >
-              <animateMotion 
-                dur="3s" 
+              <animateMotion
+                dur="3s"
                 repeatCount="indefinite"
                 begin={`${index * pulseDelay}s`}
               >
                 <mpath href={`#path-${from.x}-${from.y}-${to.x}-${to.y}`} />
               </animateMotion>
-              <animate 
-                attributeName="opacity" 
-                values="0;1;1;0" 
-                dur="3s" 
+              <animate
+                attributeName="opacity"
+                values="0;1;1;0"
+                dur="3s"
                 repeatCount="indefinite"
                 begin={`${index * pulseDelay}s`}
               />
-              <animate 
-                attributeName="r" 
-                values="2;4;4;2" 
-                dur="3s" 
+              <animate
+                attributeName="r"
+                values="2;4;4;2"
+                dur="3s"
                 repeatCount="indefinite"
                 begin={`${index * pulseDelay}s`}
               />
@@ -948,7 +956,7 @@ const ConnectionLine: React.FC<ConnectionLineProps> = ({ from, to, scale, offset
           ))}
         </>
       )}
-      
+
       {/* Hidden path for animation */}
       <path
         id={`path-${from.x}-${from.y}-${to.x}-${to.y}`}
@@ -956,7 +964,7 @@ const ConnectionLine: React.FC<ConnectionLineProps> = ({ from, to, scale, offset
         fill="none"
         stroke="none"
       />
-      
+
       {/* Pull request info - floating in the middle */}
       {pullRequest && (
         <g>
@@ -987,7 +995,7 @@ const ConnectionLine: React.FC<ConnectionLineProps> = ({ from, to, scale, offset
           </text>
         </g>
       )}
-      
+
       {/* Commit count indicator */}
       {commitCount > 0 && !pullRequest && (
         <text
@@ -1022,10 +1030,10 @@ interface CardPhysics {
   returnTo?: Position; // Target position to return to (for bounce)
 }
 
-export default function DraggableCanvas({ 
-  owner = "facebook", 
-  repo = "react", 
-  githubToken 
+export default function DraggableCanvas({
+  owner = "facebook",
+  repo = "react",
+  githubToken
 }: DraggableCanvasProps) {
   // Move these lines to the very top of the component
   const LAYOUT_OPTIONS = [
@@ -1051,7 +1059,7 @@ export default function DraggableCanvas({
   const [draggingBranch, setDraggingBranch] = useState<string | null>(null); // Add this state
   const dragTargetRef = useRef<string | null>(null); // Add ref for immediate access
   const animationFrameRef = useRef<number | undefined>(undefined);
-  
+
   // Zoom and pan state
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState<Position>({ x: 0, y: 0 });
@@ -1104,6 +1112,9 @@ export default function DraggableCanvas({
   const [branchCreationStart, setBranchCreationStart] = useState<{ branchName: string; position: Position } | null>(null);
   const [branchCreationMousePos, setBranchCreationMousePos] = useState<Position>({ x: 0, y: 0 });
 
+  // Animation time for orbiting commit nodes
+  const [animationTime, setAnimationTime] = useState<number>(0);
+
   // Calculate distance between two points
   const getDistance = (p1: Position, p2: Position): number => {
     const dx = p1.x - p2.x;
@@ -1139,7 +1150,7 @@ export default function DraggableCanvas({
   // Handle zoom with mouse wheel
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
-    
+
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -1169,7 +1180,7 @@ export default function DraggableCanvas({
     // Check if we're clicking on a card
     const target = e.target as HTMLElement;
     const isCard = target.closest('[data-card]');
-    
+
     // Only pan if space is pressed or if not clicking on a card
     if (isSpacePressed || !isCard) {
       setIsPanning(true);
@@ -1251,6 +1262,10 @@ export default function DraggableCanvas({
       // Removed all collision detection and pushing logic
       return newPhysics;
     });
+
+    // Update animation time for orbiting commit nodes
+    setAnimationTime(prevTime => prevTime + 16); // Increment by ~16ms (60fps)
+
     animationFrameRef.current = requestAnimationFrame(updatePhysics);
   }, []);
 
@@ -1269,28 +1284,28 @@ export default function DraggableCanvas({
       try {
         setLoading(true);
         setError(null);
-        
+
         // Check cache first
         const cacheKey = `gitvis-branches-${owner}-${repo}`;
         const cacheTimeKey = `${cacheKey}-time`;
         const cachedData = localStorage.getItem(cacheKey);
         const cacheTime = localStorage.getItem(cacheTimeKey);
-        
+
         // Cache TTL: 5 minutes
         const cacheTTL = 5 * 60 * 1000;
         const now = Date.now();
-        
+
         if (cachedData && cacheTime && (now - parseInt(cacheTime)) < cacheTTL) {
           // Use cached data
           const { branches: cachedBranches, defaultBranch: cachedDefaultBranch } = JSON.parse(cachedData);
-          
+
           setDefaultBranch(cachedDefaultBranch);
-          
+
           // Load existing relationships
           const relationshipsCacheKey = `${cacheKey}-relationships`;
           const cachedRelationships = localStorage.getItem(relationshipsCacheKey);
           let existingRelationships: Record<string, string> = {};
-          
+
           if (cachedRelationships) {
             try {
               existingRelationships = JSON.parse(cachedRelationships);
@@ -1298,7 +1313,7 @@ export default function DraggableCanvas({
               console.warn('Failed to parse cached relationships:', e);
             }
           }
-          
+
           // Calculate tree structure
           const { branches: treeBranches, connections: treeConnections } = await calculateBranchTree(
             cachedBranches,
@@ -1308,13 +1323,13 @@ export default function DraggableCanvas({
             {},
             existingRelationships
           );
-          
+
           setBranches(treeBranches);
           setConnections(treeConnections);
-          
+
           // Calculate tree layout positions
           const treePositions = calculateTreeLayout(treeBranches, 1200, 800, 'horizontal');
-          
+
           // Initialize physics with tree layout
           const physics: Record<string, CardPhysics> = {};
           treeBranches.forEach((branch) => {
@@ -1329,64 +1344,64 @@ export default function DraggableCanvas({
           setLoading(false);
           return;
         }
-        
+
         // Prepare headers for GitHub API
         const headers: HeadersInit = {
           'Accept': 'application/vnd.github+json',
           'X-GitHub-Api-Version': '2022-11-28'
         };
-        
+
         if (githubToken) {
           headers['Authorization'] = `Bearer ${githubToken}`;
         }
-        
+
         // First, get repository info to find default branch
         const repoUrl = `https://api.github.com/repos/${owner}/${repo}`;
         const repoResponse = await fetch(repoUrl, { headers });
-        
+
         if (!repoResponse.ok) {
           if (repoResponse.status === 403) {
             throw new Error('Rate limit exceeded. Please add a GitHub token or try again later.');
           }
           throw new Error(`HTTP error! status: ${repoResponse.status}`);
         }
-        
+
         const repoData = await repoResponse.json();
         const defaultBranchName = repoData.default_branch || 'main';
         setDefaultBranch(defaultBranchName);
-        
+
         // Fetch all branches in parallel with pagination
         const fetchAllBranches = async () => {
           const allBranches: any[] = [];
-          
+
           // First, get the total number of branches from the first page
           const firstPageUrl = `https://api.github.com/repos/${owner}/${repo}/branches?per_page=100&page=1`;
           const firstPageResponse = await fetch(firstPageUrl, { headers });
-          
+
           if (!firstPageResponse.ok) {
             if (firstPageResponse.status === 403) {
               throw new Error('Rate limit exceeded. Please add a GitHub token or try again later.');
             }
             throw new Error(`HTTP error! status: ${firstPageResponse.status}`);
           }
-          
+
           const firstPageData = await firstPageResponse.json();
           allBranches.push(...firstPageData);
-          
+
           // Check if there are more pages
           const linkHeader = firstPageResponse.headers.get('Link');
           let totalPages = 1;
-          
+
           if (linkHeader) {
             const lastPageMatch = linkHeader.match(/page=(\d+)>; rel="last"/);
             if (lastPageMatch) {
               totalPages = parseInt(lastPageMatch[1], 10);
             }
           }
-          
+
           // Update progress
           setLoadingProgress({ current: 1, total: totalPages });
-          
+
           // If there are more pages, fetch them in parallel
           if (totalPages > 1) {
             const pagePromises = [];
@@ -1405,31 +1420,31 @@ export default function DraggableCanvas({
                   })
               );
             }
-            
+
             // Fetch all pages in parallel
             const pageResults = await Promise.all(pagePromises);
             pageResults.forEach(pageData => {
               allBranches.push(...pageData);
             });
           }
-          
+
           return allBranches;
         };
-        
+
         const allBranches = await fetchAllBranches();
-        
+
         // Cache the data
-        localStorage.setItem(cacheKey, JSON.stringify({ 
-          branches: allBranches, 
-          defaultBranch: defaultBranchName 
+        localStorage.setItem(cacheKey, JSON.stringify({
+          branches: allBranches,
+          defaultBranch: defaultBranchName
         }));
         localStorage.setItem(cacheTimeKey, now.toString());
-        
+
         // Check if we have existing branch relationships cached
         const relationshipsCacheKey = `${cacheKey}-relationships`;
         const cachedRelationships = localStorage.getItem(relationshipsCacheKey);
         let existingRelationships: Record<string, string> = {};
-        
+
         if (cachedRelationships) {
           try {
             existingRelationships = JSON.parse(cachedRelationships);
@@ -1437,7 +1452,7 @@ export default function DraggableCanvas({
             console.warn('Failed to parse cached relationships:', e);
           }
         }
-        
+
         // Calculate tree structure
         const { branches: treeBranches, connections: treeConnections } = await calculateBranchTree(
           allBranches,
@@ -1447,7 +1462,7 @@ export default function DraggableCanvas({
           headers,
           existingRelationships
         );
-        
+
         // Save the relationships for future use
         const newRelationships: Record<string, string> = {};
         treeBranches.forEach(branch => {
@@ -1456,13 +1471,13 @@ export default function DraggableCanvas({
           }
         });
         localStorage.setItem(relationshipsCacheKey, JSON.stringify(newRelationships));
-        
+
         setBranches(treeBranches);
         setConnections(treeConnections);
-        
+
         // Calculate tree layout positions
         const treePositions = calculateTreeLayout(treeBranches, 1200, 800, 'horizontal');
-        
+
         // Initialize physics with tree layout
         const physics: Record<string, CardPhysics> = {};
         treeBranches.forEach((branch) => {
@@ -1488,30 +1503,30 @@ export default function DraggableCanvas({
   useEffect(() => {
     const fetchPullRequests = async () => {
       if (branches.length === 0 || loading) return;
-      
+
       try {
         // Prepare headers for GitHub API
         const headers: HeadersInit = {
           'Accept': 'application/vnd.github+json',
           'X-GitHub-Api-Version': '2022-11-28'
         };
-        
+
         if (githubToken) {
           headers['Authorization'] = `Bearer ${githubToken}`;
         }
-        
+
         // Fetch open pull requests
         const pullsUrl = `https://api.github.com/repos/${owner}/${repo}/pulls?state=open&per_page=100`;
         const response = await fetch(pullsUrl, { headers });
-        
+
         if (!response.ok) {
           console.error('Failed to fetch pull requests:', response.status);
           return;
         }
-        
+
         const pullRequestsData: PullRequest[] = await response.json();
         setPullRequests(pullRequestsData);
-        
+
         // --- NEW LOGIC: Fetch ahead_by for each PR ---
         // This will be used as commitCount for the PR connection
         const prAheadByMap: Record<number, number> = {};
@@ -1532,18 +1547,18 @@ export default function DraggableCanvas({
           })
         );
         // --- END NEW LOGIC ---
-        
+
         // Update connections with pull request information
         setConnections(prevConnections => {
           const updatedConnections = [...prevConnections];
-          
+
           // Create a map of PR connections for quick lookup
           const prConnectionMap = new Map<string, PullRequest>();
           pullRequestsData.forEach(pr => {
             const key = `${pr.head.ref}-${pr.base.ref}`;
             prConnectionMap.set(key, pr);
           });
-          
+
           // Update existing connections with PR data and ahead_by
           return updatedConnections.map(connection => {
             const key = `${connection.from}-${connection.to}`;
@@ -1558,12 +1573,12 @@ export default function DraggableCanvas({
             return connection;
           });
         });
-        
+
         // Add new connections for PRs that don't have existing branch relationships
         const existingConnectionKeys = new Set(
           connections.map(c => `${c.from}-${c.to}`)
         );
-        
+
         const newConnections: BranchConnection[] = [];
         for (const pr of pullRequestsData) {
           const key = `${pr.head.ref}-${pr.base.ref}`;
@@ -1585,7 +1600,7 @@ export default function DraggableCanvas({
         console.error('Error fetching pull requests:', error);
       }
     };
-    
+
     fetchPullRequests();
   }, [branches, loading, owner, repo, githubToken]);
 
@@ -1593,34 +1608,34 @@ export default function DraggableCanvas({
   useEffect(() => {
     const fetchCollaborators = async () => {
       if (loading) return;
-      
+
       try {
         // Prepare headers for GitHub API
         const headers: HeadersInit = {
           'Accept': 'application/vnd.github+json',
           'X-GitHub-Api-Version': '2022-11-28'
         };
-        
+
         if (githubToken) {
           headers['Authorization'] = `Bearer ${githubToken}`;
         }
-        
+
         // Fetch collaborators
         const collaboratorsUrl = `https://api.github.com/repos/${owner}/${repo}/collaborators?per_page=10`;
         const response = await fetch(collaboratorsUrl, { headers });
-        
+
         if (!response.ok) {
           console.error('Failed to fetch collaborators:', response.status);
           return;
         }
-        
+
         const collaboratorsData: Collaborator[] = await response.json();
         setCollaborators(collaboratorsData);
       } catch (error) {
         console.error('Error fetching collaborators:', error);
       }
     };
-    
+
     fetchCollaborators();
   }, [loading, owner, repo, githubToken]);
 
@@ -1628,31 +1643,31 @@ export default function DraggableCanvas({
   useEffect(() => {
     const fetchIssues = async () => {
       if (loading) return;
-      
+
       try {
         setLoadingIssues(true);
-        
+
         // Prepare headers for GitHub API
         const headers: HeadersInit = {
           'Accept': 'application/vnd.github+json',
           'X-GitHub-Api-Version': '2022-11-28'
         };
-        
+
         if (githubToken) {
           headers['Authorization'] = `Bearer ${githubToken}`;
         }
-        
+
         // Fetch open issues (excluding pull requests)
         const issuesUrl = `https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=50`;
         const response = await fetch(issuesUrl, { headers });
-        
+
         if (!response.ok) {
           console.error('Failed to fetch issues:', response.status);
           return;
         }
-        
+
         const issuesData: Issue[] = await response.json();
-        
+
         // Filter out pull requests (issues with pull_request property)
         const actualIssues = issuesData.filter(issue => !issue.pull_request);
         setIssues(actualIssues);
@@ -1662,7 +1677,7 @@ export default function DraggableCanvas({
         setLoadingIssues(false);
       }
     };
-    
+
     fetchIssues();
   }, [loading, owner, repo, githubToken]);
 
@@ -1677,7 +1692,7 @@ export default function DraggableCanvas({
         'Accept': 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28'
       };
-      
+
       if (githubToken) {
         headers['Authorization'] = `Bearer ${githubToken}`;
       }
@@ -1700,25 +1715,25 @@ export default function DraggableCanvas({
       // Fetch commits for the branch (increase limit to get more commits for filtering)
       const commitsUrl = `https://api.github.com/repos/${owner}/${repo}/commits?sha=${branchName}&per_page=50`;
       const response = await fetch(commitsUrl, { headers });
-      
+
       if (!response.ok) {
         throw new Error(`Failed to fetch commits: ${response.status}`);
       }
 
       const branchCommits = await response.json();
-      
+
       // If this is the default branch (no parents), show all commits
       if (parentBranches.length === 0) {
         // Sort commits by date (newest first)
-        const sortedCommits = branchCommits.sort((a: any, b: any) => 
+        const sortedCommits = branchCommits.sort((a: any, b: any) =>
           new Date(b.commit.author.date).getTime() - new Date(a.commit.author.date).getTime()
         );
-        
+
         // Update the branch with commits and preserve hasUniqueCommits flag
-        setBranches(prevBranches => 
-          prevBranches.map(b => 
-            b.name === branchName 
-              ? { ...b, commits: sortedCommits.slice(0, 10) } 
+        setBranches(prevBranches =>
+          prevBranches.map(b =>
+            b.name === branchName
+              ? { ...b, commits: sortedCommits.slice(0, 10) }
               : b
           )
         );
@@ -1727,12 +1742,12 @@ export default function DraggableCanvas({
 
       // Fetch commits from all parent branches to exclude them
       const parentCommitShas = new Set<string>();
-      
+
       for (const parentName of parentBranches) {
         try {
           const parentCommitsUrl = `https://api.github.com/repos/${owner}/${repo}/commits?sha=${parentName}&per_page=100`;
           const parentResponse = await fetch(parentCommitsUrl, { headers });
-          
+
           if (parentResponse.ok) {
             const parentCommits = await parentResponse.json();
             parentCommits.forEach((commit: any) => {
@@ -1745,31 +1760,31 @@ export default function DraggableCanvas({
       }
 
       // Filter out commits that exist in parent branches
-      const uniqueCommits = branchCommits.filter((commit: any) => 
+      const uniqueCommits = branchCommits.filter((commit: any) =>
         !parentCommitShas.has(commit.sha)
       );
 
       // Sort unique commits by date (newest first)
-      const sortedUniqueCommits = uniqueCommits.sort((a: any, b: any) => 
+      const sortedUniqueCommits = uniqueCommits.sort((a: any, b: any) =>
         new Date(b.commit.author.date).getTime() - new Date(a.commit.author.date).getTime()
       );
-      
+
       // Update the branch with unique commits and preserve hasUniqueCommits flag if already set
-      setBranches(prevBranches => 
-        prevBranches.map(b => 
-          b.name === branchName 
-            ? { 
-                ...b, 
-                commits: sortedUniqueCommits.slice(0, 10),
-                // Only update hasUniqueCommits if it wasn't already determined
-                aheadBy: b.aheadBy !== undefined ? b.aheadBy : (uniqueCommits.length > 0 ? uniqueCommits.length : 0)
-              } 
+      setBranches(prevBranches =>
+        prevBranches.map(b =>
+          b.name === branchName
+            ? {
+              ...b,
+              commits: sortedUniqueCommits.slice(0, 10),
+              // Only update hasUniqueCommits if it wasn't already determined
+              aheadBy: b.aheadBy !== undefined ? b.aheadBy : (uniqueCommits.length > 0 ? uniqueCommits.length : 0)
+            }
             : b
         )
       );
-      
+
       // Update connection commit count
-      setConnections(prevConnections => 
+      setConnections(prevConnections =>
         prevConnections.map(conn => {
           if (conn.from === branchName && !conn.pullRequest) {  // Changed: check from instead of to
             return { ...conn, commitCount: uniqueCommits.length };
@@ -1814,7 +1829,7 @@ export default function DraggableCanvas({
       // Check if we're dragging over another branch
       let newDragTarget: string | null = null;
       const dragThreshold = (COLLISION_RADIUS * 1.5) / scale; // Slightly larger threshold for drag detection
-      
+
       Object.entries(prev).forEach(([branchId, physics]) => {
         if (branchId !== id) { // Don't check against self
           const distance = getDistance(position, physics.position);
@@ -1899,7 +1914,7 @@ export default function DraggableCanvas({
         newSet.delete(id);
       } else {
         newSet.add(id);
-        
+
         // Fetch commits if not already loaded
         const branch = branches.find(b => b.name === id);
         if (branch && !branch.commits) {
@@ -1914,34 +1929,34 @@ export default function DraggableCanvas({
   const checkBranchAhead = async (sourceBranch: string, targetBranch: string): Promise<boolean> => {
     try {
       console.log(`Checking if ${sourceBranch} is ahead of ${targetBranch}...`);
-      
+
       const headers: HeadersInit = {
         'Accept': 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28'
       };
-      
+
       if (githubToken) {
         headers['Authorization'] = `Bearer ${githubToken}`;
       }
-      
+
       const compareUrl = `https://api.github.com/repos/${owner}/${repo}/compare/${targetBranch}...${sourceBranch}`;
       console.log('Compare URL:', compareUrl);
-      
+
       const response = await fetch(compareUrl, { headers });
-      
+
       if (!response.ok) {
         console.warn(`Failed to compare branches: ${response.status} - ${response.statusText}`);
         const errorText = await response.text();
         console.warn('Error response:', errorText);
         return false;
       }
-      
+
       const compareData = await response.json();
       console.log('Compare data:', compareData);
-      
+
       const isAhead = compareData.ahead_by > 0;
       console.log(`${sourceBranch} is ${isAhead ? 'ahead' : 'not ahead'} of ${targetBranch} (ahead_by: ${compareData.ahead_by}, behind_by: ${compareData.behind_by})`);
-      
+
       return isAhead;
     } catch (error) {
       console.warn('Error checking branch comparison:', error);
@@ -1954,60 +1969,60 @@ export default function DraggableCanvas({
     setIsCreatingPR(true);
     setIsValidatingBranches(true);
     setPRError(null);
-    
+
     try {
       // Validate input data before making API call
       if (!prDetails.title || prDetails.title.trim() === '') {
         throw new Error('Pull request title is required');
       }
-      
+
       if (!prDetails.sourceBranch || !prDetails.targetBranch) {
         throw new Error('Source and target branches are required');
       }
-      
+
       if (prDetails.sourceBranch === prDetails.targetBranch) {
         throw new Error('Source and target branches cannot be the same');
       }
-      
+
       // Check if branches exist
       const sourceBranch = branches.find(b => b.name === prDetails.sourceBranch);
       const targetBranch = branches.find(b => b.name === prDetails.targetBranch);
-      
+
       if (!sourceBranch) {
         throw new Error(`Source branch "${prDetails.sourceBranch}" not found`);
       }
-      
+
       if (!targetBranch) {
         throw new Error(`Target branch "${prDetails.targetBranch}" not found`);
       }
-      
+
       // Check if a PR already exists between these branches
-      const existingPR = pullRequests.find(pr => 
+      const existingPR = pullRequests.find(pr =>
         pr.head.ref === prDetails.sourceBranch && pr.base.ref === prDetails.targetBranch
       );
-      
+
       if (existingPR) {
         throw new Error(`A pull request already exists from "${prDetails.sourceBranch}" to "${prDetails.targetBranch}"`);
       }
-      
+
       // Check if source branch is ahead of target branch
       const isAhead = await checkBranchAhead(prDetails.sourceBranch, prDetails.targetBranch);
       if (!isAhead) {
         throw new Error(`Source branch "${prDetails.sourceBranch}" is not ahead of target branch "${prDetails.targetBranch}". No commits to merge.`);
       }
-      
+
       setIsValidatingBranches(false);
-      
+
       const headers: HeadersInit = {
         'Accept': 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
         'Content-Type': 'application/json'
       };
-      
+
       if (githubToken) {
         headers['Authorization'] = `Bearer ${githubToken}`;
       }
-      
+
       const requestBody = {
         title: prDetails.title.trim(),
         body: prDetails.body.trim() || undefined, // Only send body if not empty
@@ -2015,19 +2030,19 @@ export default function DraggableCanvas({
         base: prDetails.targetBranch,
         draft: false
       };
-      
+
       console.log('Creating pull request with data:', requestBody);
-      
+
       const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls`, {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody)
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         console.error('GitHub API error response:', errorData);
-        
+
         // Provide more specific error messages based on common validation failures
         if (errorData.message === 'Validation Failed') {
           if (errorData.errors && Array.isArray(errorData.errors)) {
@@ -2052,10 +2067,10 @@ export default function DraggableCanvas({
           throw new Error(errorData.message || `Failed to create PR: ${response.status}`);
         }
       }
-      
+
       const prData = await response.json();
       console.log('Pull request created:', prData);
-      
+
       // Close modal and refresh PR list
       setShowPRContainer(false);
       setPRDetails({
@@ -2064,23 +2079,23 @@ export default function DraggableCanvas({
         title: '',
         body: ''
       });
-      
+
       // Refresh pull requests
       const pullsUrl = `https://api.github.com/repos/${owner}/${repo}/pulls?state=open&per_page=100`;
       const pullsResponse = await fetch(pullsUrl, { headers });
       if (pullsResponse.ok) {
         const pullRequestsData: PullRequest[] = await pullsResponse.json();
         setPullRequests(pullRequestsData);
-        
+
         // Update connections with the new PR
         const existingConnection = connections.find(
           c => c.from === prDetails.sourceBranch && c.to === prDetails.targetBranch
         );
-        
+
         if (existingConnection) {
           // Update existing connection with PR info
-          setConnections(prevConnections => 
-            prevConnections.map(c => 
+          setConnections(prevConnections =>
+            prevConnections.map(c =>
               (c.from === prDetails.sourceBranch && c.to === prDetails.targetBranch)
                 ? { ...c, pullRequest: prData }
                 : c
@@ -2098,7 +2113,7 @@ export default function DraggableCanvas({
               // Fetch commit count from the PR API
               const prCommitsUrl = `https://api.github.com/repos/${owner}/${repo}/pulls/${prData.number}/commits`;
               const commitsResponse = await fetch(prCommitsUrl, { headers });
-              
+
               if (commitsResponse.ok) {
                 const commitsData = await commitsResponse.json();
                 commitCount = Math.min(commitsData.length, 5); // Cap at 5 for performance
@@ -2107,7 +2122,7 @@ export default function DraggableCanvas({
           } catch (error) {
             console.warn(`Could not get commit count for new PR #${prData.number}`);
           }
-          
+
           // Add new connection for the PR
           setConnections(prevConnections => [...prevConnections, {
             from: prDetails.sourceBranch,
@@ -2117,7 +2132,7 @@ export default function DraggableCanvas({
           }]);
         }
       }
-      
+
     } catch (error) {
       console.error('Error creating pull request:', error);
       setPRError(error instanceof Error ? error.message : 'Failed to create pull request');
@@ -2131,24 +2146,24 @@ export default function DraggableCanvas({
   const createBranch = async () => {
     setIsCreatingNewBranch(true);
     setBranchCreationError(null);
-    
+
     try {
       const headers: HeadersInit = {
         'Accept': 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
         'Content-Type': 'application/json'
       };
-      
+
       if (githubToken) {
         headers['Authorization'] = `Bearer ${githubToken}`;
       }
-      
+
       // Get the SHA of the source branch
       const sourceBranch = branches.find(b => b.name === newBranchDetails.sourceBranch);
       if (!sourceBranch) {
         throw new Error('Source branch not found');
       }
-      
+
       // Create the reference (branch)
       const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs`, {
         method: 'POST',
@@ -2158,15 +2173,15 @@ export default function DraggableCanvas({
           sha: sourceBranch.commit.sha
         })
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || `Failed to create branch: ${response.status}`);
       }
-      
+
       const branchData = await response.json();
       console.log('Branch created:', branchData);
-      
+
       // Create the new branch object
       const newBranch: Branch = {
         name: newBranchDetails.branchName,
@@ -2180,26 +2195,26 @@ export default function DraggableCanvas({
         aheadBy: 0, // New branch starts with no unique commits
         children: []
       };
-      
+
       // Add the new branch to the branches array
       setBranches(prevBranches => [...prevBranches, newBranch]);
-      
+
       // Add the new branch to physics state with a position near the source branch
       const sourcePhysics = cardPhysics[newBranchDetails.sourceBranch];
       if (sourcePhysics) {
         // Calculate a better position based on tree layout principles
         const sourceBranch = branches.find(b => b.name === newBranchDetails.sourceBranch);
         const newDepth = (sourceBranch?.depth || 0) + 1;
-        
+
         // Find other branches at the same depth to calculate spacing
         const branchesAtSameDepth = branches.filter(b => b.depth === newDepth);
         const horizontalSpacing = 200;
         const verticalSpacing = 150;
-        
+
         // Calculate position based on tree layout
         let newX: number;
         let newY: number;
-        
+
         if (branchesAtSameDepth.length === 0) {
           // First branch at this depth, position it below the parent
           newX = sourcePhysics.position.x;
@@ -2213,7 +2228,7 @@ export default function DraggableCanvas({
           newX = maxX + horizontalSpacing;
           newY = sourcePhysics.position.y + verticalSpacing;
         }
-        
+
         setCardPhysics(prev => ({
           ...prev,
           [newBranchDetails.branchName]: {
@@ -2223,36 +2238,36 @@ export default function DraggableCanvas({
           }
         }));
       }
-      
+
       // Add connection from source branch to new branch
       setConnections(prevConnections => [...prevConnections, {
         from: newBranchDetails.sourceBranch,
         to: newBranchDetails.branchName,
         commitCount: 0
       }]);
-      
+
       // Update the source branch's children
-      setBranches(prevBranches => 
-        prevBranches.map(branch => 
+      setBranches(prevBranches =>
+        prevBranches.map(branch =>
           branch.name === newBranchDetails.sourceBranch
             ? { ...branch, children: [...(branch.children || []), newBranchDetails.branchName] }
             : branch
         )
       );
-      
+
       // Close form
       setShowBranchCreationForm(false);
       setNewBranchDetails({
         sourceBranch: '',
         branchName: ''
       });
-      
+
       // Clear cache to ensure fresh data on next load
       const cacheKey = `gitvis-branches-${owner}-${repo}`;
       const cacheTimeKey = `${cacheKey}-time`;
       localStorage.removeItem(cacheKey);
       localStorage.removeItem(cacheTimeKey);
-      
+
     } catch (error) {
       console.error('Error creating branch:', error);
       setBranchCreationError(error instanceof Error ? error.message : 'Failed to create branch');
@@ -2300,12 +2315,12 @@ export default function DraggableCanvas({
     setIsCreatingBranch(true);
     setBranchCreationStart({ branchName, position: worldPosition });
     setBranchCreationMousePos(screenPosition);
-    
+
     // Set up global mouse move and up handlers
     const handleMouseMove = (e: MouseEvent) => {
       setBranchCreationMousePos({ x: e.clientX, y: e.clientY });
     };
-    
+
     const handleMouseUp = (e: MouseEvent) => {
       if (e.button === 2) { // Right mouse button
         // Calculate final world position
@@ -2313,14 +2328,14 @@ export default function DraggableCanvas({
           x: (e.clientX - offset.x) / scale,
           y: (e.clientY - offset.y) / scale
         };
-        
+
         console.log('Branch creation ended:', {
           sourceBranch: branchName,
           startPosition: worldPosition,
           endPosition: finalWorldPosition,
           screenPosition: { x: e.clientX, y: e.clientY }
         });
-        
+
         // Show branch creation form at the release position
         setBranchCreationFormPosition({ x: e.clientX, y: e.clientY });
         setNewBranchDetails({
@@ -2329,7 +2344,7 @@ export default function DraggableCanvas({
         });
         setShowBranchCreationForm(true);
         setBranchCreationError(null);
-        
+
         // Clean up
         setIsCreatingBranch(false);
         setBranchCreationStart(null);
@@ -2337,7 +2352,7 @@ export default function DraggableCanvas({
         document.removeEventListener('mouseup', handleMouseUp);
       }
     };
-    
+
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   }, [offset, scale]);
@@ -2391,17 +2406,16 @@ export default function DraggableCanvas({
   }
 
   return (
-    <div 
+    <div
       ref={canvasRef}
-      className={`relative w-full h-screen bg-[#000d1a] overflow-hidden ${
-        isPanning ? 'cursor-grabbing' : (isSpacePressed ? 'cursor-grab' : 'cursor-default')
-      }`}
+      className={`relative w-full h-screen bg-[#000d1a] overflow-hidden ${isPanning ? 'cursor-grabbing' : (isSpacePressed ? 'cursor-grab' : 'cursor-default')
+        }`}
       onMouseDown={handleMouseDown}
     >
       <style dangerouslySetInnerHTML={{ __html: customStyles }} />
-      
+
       {/* Canvas background pattern */}
-      <div 
+      <div
         className="absolute inset-0 opacity-10 canvas-background pointer-events-none"
         style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Crect x='28' y='28' width='4' height='4'/%3E%3C/g%3E%3C/svg%3E")`,
@@ -2410,14 +2424,14 @@ export default function DraggableCanvas({
           transform: 'translateZ(0)' // Force GPU acceleration
         }}
       />
-      
+
       {/* Header */}
       <div className="absolute top-4 left-4 z-10 pointer-events-none">
         <h1 className="text-2xl font-bold text-white">
           {owner}/{repo} Branches
         </h1>
         <p className="text-gray-400 text-sm mt-1">
-          {branches.length} branch{branches.length !== 1 ? 'es' : ''} 
+          {branches.length} branch{branches.length !== 1 ? 'es' : ''}
           {pullRequests.length > 0 && (
             <span className="text-green-400">
               {' '}• {pullRequests.length} open PR{pullRequests.length !== 1 ? 's' : ''}
@@ -2467,7 +2481,7 @@ export default function DraggableCanvas({
             )}
           </div>
         )}
-        
+
         {/* GitHub button */}
         <a
           href={`https://github.com/${owner}/${repo}`}
@@ -2481,7 +2495,7 @@ export default function DraggableCanvas({
             fill="currentColor"
             viewBox="0 0 24 24"
           >
-            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
           </svg>
         </a>
       </div>
@@ -2492,69 +2506,70 @@ export default function DraggableCanvas({
           <p className="text-white text-sm font-medium">Pan Mode</p>
         </div>
       )}
-      
+
       {/* Connection Lines */}
       {showTreeView && connections
         .filter(connection => {
           // Only show connections where both branches are visible
           const fromBranch = branches.find(b => b.name === connection.from);
           const toBranch = branches.find(b => b.name === connection.to);
-          return (showMergedBranches || fromBranch?.aheadBy !== 0) && 
-                 (showMergedBranches || toBranch?.aheadBy !== 0);
+          return (showMergedBranches || fromBranch?.aheadBy !== 0) &&
+            (showMergedBranches || toBranch?.aheadBy !== 0);
         })
         .map((connection, index) => {
-        const fromPhysics = cardPhysics[connection.from];
-        const toPhysics = cardPhysics[connection.to];
-        const fromBranch = branches.find(b => b.name === connection.from);
-        
-        if (!fromPhysics || !toPhysics) return null;
-        
-        return (
-          <ConnectionLine
-            key={`${connection.from}-${connection.to}-${index}`}
-            from={fromPhysics.position}
-            to={toPhysics.position}
-            scale={scale}
-            offset={offset}
-            pullRequest={connection.pullRequest}
-            commitCount={
-              connection.pullRequest
-                ? Math.max(0, Math.min(5, connection.commitCount || 0))
-                : Math.max(0, Math.min(5, fromBranch?.aheadBy ?? 0))
-            }
-          />
-        );
-      })}
-      
+          const fromPhysics = cardPhysics[connection.from];
+          const toPhysics = cardPhysics[connection.to];
+          const fromBranch = branches.find(b => b.name === connection.from);
+
+          if (!fromPhysics || !toPhysics) return null;
+
+          return (
+            <ConnectionLine
+              key={`${connection.from}-${connection.to}-${index}`}
+              from={fromPhysics.position}
+              to={toPhysics.position}
+              scale={scale}
+              offset={offset}
+              pullRequest={connection.pullRequest}
+              commitCount={
+                connection.pullRequest
+                  ? Math.max(0, Math.min(5, connection.commitCount || 0))
+                  : Math.max(0, Math.min(5, fromBranch?.aheadBy ?? 0))
+              }
+            />
+          );
+        })}
+
       {/* Draggable Branch Cards */}
       {branches
         .filter(branch => showMergedBranches || branch.aheadBy !== 0) // Filter branches based on showMergedBranches state
         .map((branch) => {
-        const physics = cardPhysics[branch.name];
-        if (!physics) return null;
+          const physics = cardPhysics[branch.name];
+          if (!physics) return null;
 
-        return (
-          <div key={branch.name} data-card="true">
-            <DraggableNode
-              id={branch.name}
-              branch={branch}
-              position={physics.position}
-              velocity={physics.velocity}
-              isDragging={physics.isDragging}
-              scale={scale}
-              offset={offset}
-              isSpacePressed={isSpacePressed}
-              isExpanded={expandedCards.has(branch.name)}
-              isLoadingCommits={loadingCommits.has(branch.name)}
-              isDragTarget={dragTargetBranch === branch.name} // Use the drag target state
-              onStartDrag={handleStartDrag}
-              onDrag={handleDrag}
-              onEndDrag={handleEndDrag}
-              onDoubleClick={handleDoubleClick}
-            />
-          </div>
-        );
-      })}
+          return (
+            <div key={branch.name} data-card="true">
+              <DraggableNode
+                id={branch.name}
+                branch={branch}
+                position={physics.position}
+                velocity={physics.velocity}
+                isDragging={physics.isDragging}
+                scale={scale}
+                offset={offset}
+                isSpacePressed={isSpacePressed}
+                isExpanded={expandedCards.has(branch.name)}
+                isLoadingCommits={loadingCommits.has(branch.name)}
+                isDragTarget={dragTargetBranch === branch.name} // Use the drag target state
+                animationTime={animationTime} // Pass animation time for orbiting commits
+                onStartDrag={handleStartDrag}
+                onDrag={handleDrag}
+                onEndDrag={handleEndDrag}
+                onDoubleClick={handleDoubleClick}
+              />
+            </div>
+          );
+        })}
 
       {/* Branch Creation Preview */}
       {isCreatingBranch && branchCreationStart && (
@@ -2581,7 +2596,7 @@ export default function DraggableCanvas({
               strokeDasharray="4,4"
             />
           </svg>
-          
+
           {/* Gray preview node at mouse position */}
           <div
             className="absolute pointer-events-none"
@@ -2601,7 +2616,7 @@ export default function DraggableCanvas({
               }}
             >
               {/* Inner glow effect */}
-              <div 
+              <div
                 className="absolute inset-1 rounded-full"
                 style={{
                   background: 'radial-gradient(circle at center, rgba(156, 163, 175, 0.6), transparent)',
@@ -2609,7 +2624,7 @@ export default function DraggableCanvas({
                 }}
               />
             </div>
-            
+
             {/* "New Branch" text */}
             <div
               className="absolute left-1/2 transform -translate-x-1/2 whitespace-nowrap"
@@ -2634,13 +2649,12 @@ export default function DraggableCanvas({
       <div className="absolute bottom-4 right-4 z-10 flex gap-2">
         <button
           onClick={() => setShowMergedBranches(!showMergedBranches)}
-          className={`bg-gray-800/80 backdrop-blur-sm px-4 py-2 rounded-lg text-sm hover:bg-gray-700/80 transition-colors pointer-events-auto flex items-center gap-2 ${
-            showMergedBranches ? 'text-gray-300' : 'text-gray-500'
-          }`}
+          className={`bg-gray-800/80 backdrop-blur-sm px-4 py-2 rounded-lg text-sm hover:bg-gray-700/80 transition-colors pointer-events-auto flex items-center gap-2 ${showMergedBranches ? 'text-gray-300' : 'text-gray-500'
+            }`}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={
-              showMergedBranches 
+              showMergedBranches
                 ? "M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
                 : "M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
             } />
@@ -2654,7 +2668,7 @@ export default function DraggableCanvas({
             const cacheTimeKey = `${cacheKey}-time`;
             localStorage.removeItem(cacheKey);
             localStorage.removeItem(cacheTimeKey);
-            
+
             // Trigger re-fetch by updating a dummy state
             window.location.reload();
           }}
@@ -2743,7 +2757,7 @@ export default function DraggableCanvas({
 
       {/* PR Creation Container - positioned at target branch */}
       {showPRContainer && (
-        <div 
+        <div
           ref={prContainerRef}
           className="absolute z-50 bg-gray-900/95 backdrop-blur-md rounded-xl border border-gray-700/50 p-4 shadow-2xl max-w-sm"
           style={{
@@ -2880,7 +2894,7 @@ export default function DraggableCanvas({
 
       {/* Branch Creation Form - positioned at mouse release */}
       {showBranchCreationForm && (
-        <div 
+        <div
           ref={branchCreationFormRef}
           className="absolute z-50 bg-gray-900/95 backdrop-blur-md rounded-xl border border-gray-700/50 p-4 shadow-2xl max-w-sm"
           style={{
@@ -2995,7 +3009,7 @@ export default function DraggableCanvas({
             <svg className="w-5 h-5 text-gray-300 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            
+
             {/* Notification badges */}
             {(pullRequests.length > 0 || issues.length > 0) && (
               <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
@@ -3009,7 +3023,7 @@ export default function DraggableCanvas({
 
         {/* Container */}
         {showIssuesContainer && (
-          <div 
+          <div
             className="absolute bottom-16 right-0 w-80 bg-gray-900/95 backdrop-blur-md rounded-xl border border-gray-700/50 shadow-2xl"
             style={{
               boxShadow: '0 0 50px rgba(59, 130, 246, 0.15), 0 0 100px rgba(59, 130, 246, 0.1)',
@@ -3033,11 +3047,10 @@ export default function DraggableCanvas({
             <div className="flex border-b border-gray-700/50">
               <button
                 onClick={() => setActiveTab('prs')}
-                className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 ${
-                  activeTab === 'prs' 
-                    ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/10' 
+                className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 ${activeTab === 'prs'
+                    ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/10'
                     : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
-                }`}
+                  }`}
               >
                 <div className="flex items-center justify-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3053,11 +3066,10 @@ export default function DraggableCanvas({
               </button>
               <button
                 onClick={() => setActiveTab('issues')}
-                className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 ${
-                  activeTab === 'issues' 
-                    ? 'text-orange-400 border-b-2 border-orange-400 bg-orange-500/10' 
+                className={`flex-1 px-4 py-3 text-sm font-medium transition-all duration-200 ${activeTab === 'issues'
+                    ? 'text-orange-400 border-b-2 border-orange-400 bg-orange-500/10'
                     : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
-                }`}
+                  }`}
               >
                 <div className="flex items-center justify-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3110,8 +3122,8 @@ export default function DraggableCanvas({
                             )}
                           </div>
                           <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <img 
-                              src={pr.user.avatar_url} 
+                            <img
+                              src={pr.user.avatar_url}
                               alt={pr.user.login}
                               className="w-4 h-4 rounded-full"
                             />
@@ -3188,8 +3200,8 @@ export default function DraggableCanvas({
                             )}
                           </div>
                           <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <img 
-                              src={issue.user.avatar_url} 
+                            <img
+                              src={issue.user.avatar_url}
                               alt={issue.user.login}
                               className="w-4 h-4 rounded-full"
                             />
