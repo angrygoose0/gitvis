@@ -20,7 +20,7 @@
   - Add TypeScript types for API responses
   - _Requirements: 6.1, 6.2, 6.3, 2.2_
 
-- [ ] 4. Create branch analysis service
+- [x] 4. Create branch analysis service
   - Create `branch-analyzer.ts` and move `calculateBranchTree` function
   - Separate branch relationship logic from API calls
   - Implement branch status analysis functions

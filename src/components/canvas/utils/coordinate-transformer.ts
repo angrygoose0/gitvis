@@ -2,10 +2,7 @@
  * Coordinate transformation utilities for canvas interactions
  */
 
-export interface Position {
-  x: number;
-  y: number;
-}
+import { Position } from '../types/canvas';
 
 /**
  * Converts world coordinates to screen coordinates

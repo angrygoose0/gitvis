@@ -2,17 +2,8 @@
  * Layout calculation utilities for positioning nodes in the canvas
  */
 
-export interface Position {
-  x: number;
-  y: number;
-}
-
-export interface Branch {
-  name: string;
-  depth?: number;
-  parent?: string;
-  children?: string[];
-}
+import { Position } from '../types/canvas';
+import { Branch } from '../types/github';
 
 export type LayoutAlignment = 'horizontal' | 'vertical' | 'radial';
 

@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "name": "Task Completion Commit",
-  "description": "Automatically commits changes to the current GitHub branch whenever a task is completed, as well as push the commit to that branch",
+  "description": "Automatically commits changes to the current GitHub branch whenever a task is completed, as well as push the commit to that branch.",
   "version": "1",
   "when": {
     "type": "fileEdited",
@@ -16,6 +16,6 @@
   },
   "then": {
     "type": "askAgent",
-    "prompt": "A task has been completed. Please commit all current changes to the GitHub repository on the current branch with an appropriate commit message that describes what was accomplished, as well as push this commit to the branch."
+    "prompt": "A task has been completed. Please commit all current changes to the GitHub repository on the current branch with a commit message that contains the task name. as well as push this commit to the current branch."
   }
 }

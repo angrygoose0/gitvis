@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "name": "Feature Branch Creator",
   "description": "Everytime a new major feature is being planned, create a new branch using github, and use that branch.",
   "version": "1",
