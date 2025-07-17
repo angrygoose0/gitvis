@@ -43,7 +43,7 @@
 - [ ] 7. Create GitHub data management hook
   - Create `useGitHubData.ts` to orchestrate data fetching
   - Integrate with GitHub API service
-  - Manage loading states and error handling
+  - Manage loading states and error shandling
   - Implement data caching strategy
   - _Requirements: 6.2, 6.4, 2.1, 2.2_
 
