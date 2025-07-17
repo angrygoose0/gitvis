@@ -68,7 +68,7 @@
   - Implement node interaction handlers
   - _Requirements: 4.1, 4.2, 4.4, 7.1, 7.4_
 
-- [ ] 11. Refactor main DraggableCanvas component
+- [x] 11. Refactor main DraggableCanvas component
   - Update main component to use extracted hooks and services
   - Remove extracted code and replace with hook calls
   - Integrate all new components

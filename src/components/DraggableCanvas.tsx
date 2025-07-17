@@ -1,11 +1,17 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { formatDate } from './canvas/utils/date-formatter';
+import { useCanvasInteraction } from './canvas/hooks/useCanvasInteraction';
+import { usePhysicsEngine } from './canvas/hooks/usePhysicsEngine';
+import { useGitHubData } from './canvas/hooks/useGitHubData';
 import { calculateTreeLayout } from './canvas/utils/layout-calculator';
-import { calculateBranchTree } from './canvas/services/branch-analyzer';
+import { formatDate } from './canvas/utils/date-formatter';
 import { ConnectionLine } from './canvas/components/ConnectionLine';
 import { CanvasNode } from './canvas/components/CanvasNode';
+import { Position } from './canvas/types/canvas';
+
+// Constants
+const NODE_RADIUS = 30; // Node radius for branch creation preview
 
 // Add custom styles for scrollbar
 const customStyles = `
@@ -31,124 +37,7 @@ const customStyles = `
   }
 `;
 
-interface Position {
-  x: number;
-  y: number;
-}
-
-interface Velocity {
-  x: number;
-  y: number;
-}
-
-
-interface PullRequest {
-  id: number;
-  number: number;
-  title: string;
-  state: string;
-  html_url: string;
-  created_at: string;
-  updated_at: string;
-  user: {
-    login: string;
-    avatar_url: string;
-  };
-  head: {
-    ref: string; // source branch
-    sha: string;
-  };
-  base: {
-    ref: string; // target branch
-    sha: string;
-  };
-  draft: boolean;
-  merged: boolean;
-  mergeable?: boolean;
-  mergeable_state?: string;
-}
-
-interface Issue {
-  id: number;
-  number: number;
-  title: string;
-  state: string;
-  html_url: string;
-  created_at: string;
-  updated_at: string;
-  user: {
-    login: string;
-    avatar_url: string;
-  };
-  assignees: Array<{
-    login: string;
-    avatar_url: string;
-  }>;
-  labels: Array<{
-    name: string;
-    color: string;
-  }>;
-  milestone?: {
-    title: string;
-  };
-  comments: number;
-  pull_request?: {
-    url: string;
-  };
-}
-
-interface Branch {
-  name: string;
-  commit: {
-    sha: string;
-    url: string;
-  };
-  protected: boolean;
-  parent?: string; // Added parent branch reference
-  depth?: number; // Added depth in tree
-  children?: string[]; // Added children branches
-  mergedAt?: string; // Added merge date
-  aheadBy?: number; // Number of commits ahead of parent (0 = not ahead, >0 = ahead, <0 = behind, undefined = unknown)
-  commits?: Array<{
-    sha: string;
-    commit: {
-      message: string;
-      author: {
-        name: string;
-        date: string;
-      };
-    };
-  }>;
-}
-
-interface Collaborator {
-  id: number;
-  login: string;
-  avatar_url: string;
-  html_url: string;
-  type: string;
-  site_admin: boolean;
-  permissions?: {
-    admin: boolean;
-    maintain: boolean;
-    push: boolean;
-    triage: boolean;
-    pull: boolean;
-  };
-}
-
-interface BranchConnection {
-  from: string;
-  to: string;
-  pullRequest?: PullRequest; // Added pull request info
-  commitCount?: number; // Added commit count for the connection
-}
-
-
-
-const COLLISION_RADIUS = 30; // Effective radius for collision detection between nodes - reduced
-const FRICTION = 0.95; // Deceleration factor
-const MIN_VELOCITY = 0.1; // Minimum velocity before stopping
+// Remove duplicate type definitions - they're now imported from types
 
 
 
@@ -166,52 +55,43 @@ interface DraggableCanvasProps {
   githubToken?: string; // Add support for GitHub token
 }
 
-interface CardPhysics {
-  position: Position;
-  velocity: Velocity;
-  isDragging: boolean;
-  lastDragPosition?: Position;
-  originalPosition?: Position; // Store original position for bounce-back
-  returnTo?: Position; // Target position to return to (for bounce)
-}
-
 export default function DraggableCanvas({
   owner = "facebook",
   repo = "react",
   githubToken
 }: DraggableCanvasProps) {
-  // Move these lines to the very top of the component
+  // Initialize hooks
+  const canvasInteraction = useCanvasInteraction({
+    minScale: 0.1,
+    maxScale: 5,
+    zoomSensitivity: 0.1,
+  });
+
+  const physicsEngine = usePhysicsEngine({
+    enableCollisions: false,
+    enableBounceBack: true,
+  });
+
+  const githubData = useGitHubData({
+    owner,
+    repo,
+    githubToken,
+  });
+
+  // Layout and UI state
   const LAYOUT_OPTIONS = [
     { value: 'horizontal', label: 'Horizontal Tree' },
     { value: 'vertical', label: 'Vertical Tree' },
     { value: 'radial', label: 'Radial' },
   ];
   const [layoutAlignment, setLayoutAlignment] = useState<'horizontal' | 'vertical' | 'radial'>('horizontal');
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingProgress, setLoadingProgress] = useState({ current: 0, total: 0 });
-  const [error, setError] = useState<string | null>(null);
-  const [cardPhysics, setCardPhysics] = useState<Record<string, CardPhysics>>({});
-  const [connections, setConnections] = useState<BranchConnection[]>([]);
-  const [defaultBranch, setDefaultBranch] = useState<string>('main');
   const [showTreeView, setShowTreeView] = useState<boolean>(true);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
-  const [loadingCommits, setLoadingCommits] = useState<Set<string>>(new Set());
   const [showMergedBranches, setShowMergedBranches] = useState<boolean>(true);
-  const [pullRequests, setPullRequests] = useState<PullRequest[]>([]);
-  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
-  const [dragTargetBranch, setDragTargetBranch] = useState<string | null>(null); // Add this state
-  const [draggingBranch, setDraggingBranch] = useState<string | null>(null); // Add this state
-  const dragTargetRef = useRef<string | null>(null); // Add ref for immediate access
-  const animationFrameRef = useRef<number | undefined>(undefined);
-
-  // Zoom and pan state
-  const [scale, setScale] = useState(1);
-  const [offset, setOffset] = useState<Position>({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart] = useState<Position>({ x: 0, y: 0 });
-  const [isSpacePressed, setIsSpacePressed] = useState(false);
-  const canvasRef = useRef<HTMLDivElement>(null);
+  
+  // Drag and drop state
+  const [dragTargetBranch, setDragTargetBranch] = useState<string | null>(null);
+  const dragTargetRef = useRef<string | null>(null);
 
   // PR creation state - changed from modal to inline container
   const [showPRContainer, setShowPRContainer] = useState(false);
@@ -247,763 +127,121 @@ export default function DraggableCanvas({
   const branchCreationFormRef = useRef<HTMLDivElement>(null);
 
   // Issues and container state
-  const [issues, setIssues] = useState<Issue[]>([]);
   const [showIssuesContainer, setShowIssuesContainer] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'prs' | 'issues'>('prs');
-  const [loadingIssues, setLoadingIssues] = useState<boolean>(false);
 
   // Branch creation drag state
   const [isCreatingBranch, setIsCreatingBranch] = useState(false);
   const [branchCreationStart, setBranchCreationStart] = useState<{ branchName: string; position: Position } | null>(null);
   const [branchCreationMousePos, setBranchCreationMousePos] = useState<Position>({ x: 0, y: 0 });
 
-  // Animation time for orbiting commit nodes
-  const [animationTime, setAnimationTime] = useState<number>(0);
+  // Extract data and methods from hooks
+  const { 
+    scale, 
+    offset, 
+    isSpacePressed,
+    isPanning,
+    canvasRef, 
+    handleCanvasMouseDown,
+    screenToWorldCoords,
+    mouseToWorldCoords,
+    setScale,
+    setOffset
+  } = canvasInteraction;
+  
+  const { 
+    cardPhysics, 
+    animationTime, 
+    getDistance,
+    setCardPhysics,
+    startDrag,
+    updateDrag,
+    endDrag,
+    initializeCard,
+    updateCardPhysics
+  } = physicsEngine;
+  
+  const {
+    data: {
+      branches,
+      pullRequests,
+      issues,
+      collaborators,
+      connections,
+      defaultBranch
+    },
+    loading: {
+      isLoading: loading,
+      progress: loadingProgress,
+      loadingCommits
+    },
+    error: {
+      error
+    },
+    fetchBranchCommits,
+    createPullRequest: createPullRequestHook,
+    createBranch: createBranchHook
+  } = githubData;
 
-  // Calculate distance between two points
-  const getDistance = (p1: Position, p2: Position): number => {
-    const dx = p1.x - p2.x;
-    const dy = p1.y - p2.y;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  // Handle space key press
+  // Initialize physics positions when branches are loaded
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !e.repeat) {
-        e.preventDefault();
-        setIsSpacePressed(true);
-      }
-    };
+    if (branches.length > 0) {
+      // Calculate tree layout positions
+      const treePositions = calculateTreeLayout(branches, 1200, 800, layoutAlignment);
 
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
-        e.preventDefault();
-        setIsSpacePressed(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, []);
-
-  // Handle zoom with mouse wheel
-  const handleWheel = useCallback((e: WheelEvent) => {
-    e.preventDefault();
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-
-    // Calculate zoom
-    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-    const newScale = Math.min(Math.max(0.1, scale * zoomFactor), 5);
-
-    // Calculate new offset to zoom towards mouse position
-    const worldX = (mouseX - offset.x) / scale;
-    const worldY = (mouseY - offset.y) / scale;
-
-    const newOffset = {
-      x: mouseX - worldX * newScale,
-      y: mouseY - worldY * newScale
-    };
-
-    setScale(newScale);
-    setOffset(newOffset);
-  }, [scale, offset]);
-
-  // Handle panning - only when space is pressed
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    // Check if we're clicking on a card
-    const target = e.target as HTMLElement;
-    const isCard = target.closest('[data-card]');
-
-    // Only pan if space is pressed or if not clicking on a card
-    if (isSpacePressed || !isCard) {
-      setIsPanning(true);
-      setPanStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
-    }
-  }, [offset, isSpacePressed]);
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (isPanning) {
-      setOffset({
-        x: e.clientX - panStart.x,
-        y: e.clientY - panStart.y
-      });
-    }
-  }, [isPanning, panStart]);
-
-  const handleMouseUp = useCallback(() => {
-    setIsPanning(false);
-  }, []);
-
-  // Set up event listeners
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    canvas.addEventListener('wheel', handleWheel, { passive: false });
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      canvas.removeEventListener('wheel', handleWheel);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [handleWheel, handleMouseMove, handleMouseUp]);
-
-  // Physics update loop
-  const updatePhysics = useCallback(() => {
-    setCardPhysics(prevPhysics => {
-      const newPhysics = { ...prevPhysics };
-      const cardIds = Object.keys(newPhysics);
-
-      // Update positions based on velocity and handle bounce-back
-      cardIds.forEach(id => {
-        const card = newPhysics[id];
-        if (!card.isDragging) {
-          // Bounce-back logic
-          if (card.returnTo) {
-            const dx = card.returnTo.x - card.position.x;
-            const dy = card.returnTo.y - card.position.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < 1) {
-              // Snap to target and clear returnTo
-              card.position = { ...card.returnTo };
-              card.velocity = { x: 0, y: 0 };
-              delete card.returnTo;
-              delete card.originalPosition;
-            } else {
-              // Move toward returnTo with spring effect
-              const spring = 0.2;
-              card.velocity.x = dx * spring;
-              card.velocity.y = dy * spring;
-              card.position.x += card.velocity.x;
-              card.position.y += card.velocity.y;
-            }
-          } else {
-            // Apply velocity
-            card.position.x += card.velocity.x;
-            card.position.y += card.velocity.y;
-            // Apply friction
-            card.velocity.x *= FRICTION;
-            card.velocity.y *= FRICTION;
-            // Stop if velocity is too small
-            if (Math.abs(card.velocity.x) < MIN_VELOCITY) card.velocity.x = 0;
-            if (Math.abs(card.velocity.y) < MIN_VELOCITY) card.velocity.y = 0;
-          }
-        }
-      });
-      // Removed all collision detection and pushing logic
-      return newPhysics;
-    });
-
-    // Update animation time for orbiting commit nodes
-    setAnimationTime(prevTime => prevTime + 16); // Increment by ~16ms (60fps)
-
-    animationFrameRef.current = requestAnimationFrame(updatePhysics);
-  }, []);
-
-  // Start physics simulation
-  useEffect(() => {
-    animationFrameRef.current = requestAnimationFrame(updatePhysics);
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [updatePhysics]);
-
-  useEffect(() => {
-    const fetchBranches = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        // Check cache first
-        const cacheKey = `gitvis-branches-${owner}-${repo}`;
-        const cacheTimeKey = `${cacheKey}-time`;
-        const cachedData = localStorage.getItem(cacheKey);
-        const cacheTime = localStorage.getItem(cacheTimeKey);
-
-        // Cache TTL: 5 minutes
-        const cacheTTL = 5 * 60 * 1000;
-        const now = Date.now();
-
-        if (cachedData && cacheTime && (now - parseInt(cacheTime)) < cacheTTL) {
-          // Use cached data
-          const { branches: cachedBranches, defaultBranch: cachedDefaultBranch } = JSON.parse(cachedData);
-
-          setDefaultBranch(cachedDefaultBranch);
-
-          // Load existing relationships
-          const relationshipsCacheKey = `${cacheKey}-relationships`;
-          const cachedRelationships = localStorage.getItem(relationshipsCacheKey);
-          let existingRelationships: Record<string, string> = {};
-
-          if (cachedRelationships) {
-            try {
-              existingRelationships = JSON.parse(cachedRelationships);
-            } catch (e) {
-              console.warn('Failed to parse cached relationships:', e);
-            }
-          }
-
-          // Calculate tree structure
-          const { branches: treeBranches, connections: treeConnections } = await calculateBranchTree(
-            cachedBranches,
-            owner,
-            repo,
-            cachedDefaultBranch,
-            {},
-            existingRelationships
-          );
-
-          setBranches(treeBranches);
-          setConnections(treeConnections);
-
-          // Calculate tree layout positions
-          const treePositions = calculateTreeLayout(treeBranches, 1200, 800, 'horizontal');
-
-          // Initialize physics with tree layout
-          const physics: Record<string, CardPhysics> = {};
-          treeBranches.forEach((branch) => {
-            const position = treePositions[branch.name] || { x: 100, y: 100 };
-            physics[branch.name] = {
-              position,
-              velocity: { x: 0, y: 0 },
-              isDragging: false
-            };
-          });
-          setCardPhysics(physics);
-          setLoading(false);
-          return;
-        }
-
-        // Prepare headers for GitHub API
-        const headers: HeadersInit = {
-          'Accept': 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28'
-        };
-
-        if (githubToken) {
-          headers['Authorization'] = `Bearer ${githubToken}`;
-        }
-
-        // First, get repository info to find default branch
-        const repoUrl = `https://api.github.com/repos/${owner}/${repo}`;
-        const repoResponse = await fetch(repoUrl, { headers });
-
-        if (!repoResponse.ok) {
-          if (repoResponse.status === 403) {
-            throw new Error('Rate limit exceeded. Please add a GitHub token or try again later.');
-          }
-          throw new Error(`HTTP error! status: ${repoResponse.status}`);
-        }
-
-        const repoData = await repoResponse.json();
-        const defaultBranchName = repoData.default_branch || 'main';
-        setDefaultBranch(defaultBranchName);
-
-        // Fetch all branches in parallel with pagination
-        const fetchAllBranches = async () => {
-          const allBranches: any[] = [];
-
-          // First, get the total number of branches from the first page
-          const firstPageUrl = `https://api.github.com/repos/${owner}/${repo}/branches?per_page=100&page=1`;
-          const firstPageResponse = await fetch(firstPageUrl, { headers });
-
-          if (!firstPageResponse.ok) {
-            if (firstPageResponse.status === 403) {
-              throw new Error('Rate limit exceeded. Please add a GitHub token or try again later.');
-            }
-            throw new Error(`HTTP error! status: ${firstPageResponse.status}`);
-          }
-
-          const firstPageData = await firstPageResponse.json();
-          allBranches.push(...firstPageData);
-
-          // Check if there are more pages
-          const linkHeader = firstPageResponse.headers.get('Link');
-          let totalPages = 1;
-
-          if (linkHeader) {
-            const lastPageMatch = linkHeader.match(/page=(\d+)>; rel="last"/);
-            if (lastPageMatch) {
-              totalPages = parseInt(lastPageMatch[1], 10);
-            }
-          }
-
-          // Update progress
-          setLoadingProgress({ current: 1, total: totalPages });
-
-          // If there are more pages, fetch them in parallel
-          if (totalPages > 1) {
-            const pagePromises = [];
-            for (let page = 2; page <= totalPages; page++) {
-              const pageUrl = `https://api.github.com/repos/${owner}/${repo}/branches?per_page=100&page=${page}`;
-              pagePromises.push(
-                fetch(pageUrl, { headers })
-                  .then(res => {
-                    if (!res.ok) throw new Error(`Failed to fetch page ${page}`);
-                    return res.json();
-                  })
-                  .then(data => {
-                    // Update progress as pages complete
-                    setLoadingProgress(prev => ({ ...prev, current: prev.current + 1 }));
-                    return data;
-                  })
-              );
-            }
-
-            // Fetch all pages in parallel
-            const pageResults = await Promise.all(pagePromises);
-            pageResults.forEach(pageData => {
-              allBranches.push(...pageData);
-            });
-          }
-
-          return allBranches;
-        };
-
-        const allBranches = await fetchAllBranches();
-
-        // Cache the data
-        localStorage.setItem(cacheKey, JSON.stringify({
-          branches: allBranches,
-          defaultBranch: defaultBranchName
-        }));
-        localStorage.setItem(cacheTimeKey, now.toString());
-
-        // Check if we have existing branch relationships cached
-        const relationshipsCacheKey = `${cacheKey}-relationships`;
-        const cachedRelationships = localStorage.getItem(relationshipsCacheKey);
-        let existingRelationships: Record<string, string> = {};
-
-        if (cachedRelationships) {
-          try {
-            existingRelationships = JSON.parse(cachedRelationships);
-          } catch (e) {
-            console.warn('Failed to parse cached relationships:', e);
-          }
-        }
-
-        // Calculate tree structure
-        const { branches: treeBranches, connections: treeConnections } = await calculateBranchTree(
-          allBranches,
-          owner,
-          repo,
-          defaultBranchName,
-          headers,
-          existingRelationships
-        );
-
-        // Save the relationships for future use
-        const newRelationships: Record<string, string> = {};
-        treeBranches.forEach(branch => {
-          if (branch.parent) {
-            newRelationships[branch.name] = branch.parent;
-          }
-        });
-        localStorage.setItem(relationshipsCacheKey, JSON.stringify(newRelationships));
-
-        setBranches(treeBranches);
-        setConnections(treeConnections);
-
-        // Calculate tree layout positions
-        const treePositions = calculateTreeLayout(treeBranches, 1200, 800, 'horizontal');
-
-        // Initialize physics with tree layout
-        const physics: Record<string, CardPhysics> = {};
-        treeBranches.forEach((branch) => {
-          const position = treePositions[branch.name] || { x: 100, y: 100 };
-          physics[branch.name] = {
+      // Initialize physics with tree layout
+      branches.forEach((branch) => {
+        const position = treePositions[branch.name] || { x: 100, y: 100 };
+        if (!cardPhysics[branch.name]) {
+          initializeCard(branch.name, {
             position,
             velocity: { x: 0, y: 0 },
-            isDragging: false
-          };
-        });
-        setCardPhysics(physics);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchBranches();
-  }, [owner, repo, githubToken, layoutAlignment]);
-
-  // Fetch pull requests when branches are loaded
-  useEffect(() => {
-    const fetchPullRequests = async () => {
-      if (branches.length === 0 || loading) return;
-
-      try {
-        // Prepare headers for GitHub API
-        const headers: HeadersInit = {
-          'Accept': 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28'
-        };
-
-        if (githubToken) {
-          headers['Authorization'] = `Bearer ${githubToken}`;
-        }
-
-        // Fetch open pull requests
-        const pullsUrl = `https://api.github.com/repos/${owner}/${repo}/pulls?state=open&per_page=100`;
-        const response = await fetch(pullsUrl, { headers });
-
-        if (!response.ok) {
-          console.error('Failed to fetch pull requests:', response.status);
-          return;
-        }
-
-        const pullRequestsData: PullRequest[] = await response.json();
-        setPullRequests(pullRequestsData);
-
-        // --- NEW LOGIC: Fetch ahead_by for each PR ---
-        // This will be used as commitCount for the PR connection
-        const prAheadByMap: Record<number, number> = {};
-        await Promise.all(
-          pullRequestsData.map(async (pr) => {
-            try {
-              const compareUrl = `https://api.github.com/repos/${owner}/${repo}/compare/${pr.base.ref}...${pr.head.ref}`;
-              const compareRes = await fetch(compareUrl, { headers });
-              if (compareRes.ok) {
-                const compareData = await compareRes.json();
-                prAheadByMap[pr.id] = compareData.ahead_by;
-              } else {
-                prAheadByMap[pr.id] = 0;
-              }
-            } catch (err) {
-              prAheadByMap[pr.id] = 0;
-            }
-          })
-        );
-        // --- END NEW LOGIC ---
-
-        // Update connections with pull request information
-        setConnections(prevConnections => {
-          const updatedConnections = [...prevConnections];
-
-          // Create a map of PR connections for quick lookup
-          const prConnectionMap = new Map<string, PullRequest>();
-          pullRequestsData.forEach(pr => {
-            const key = `${pr.head.ref}-${pr.base.ref}`;
-            prConnectionMap.set(key, pr);
+            isDragging: false,
+            isExpanded: false,
+            isLoadingCommits: false,
+            isDragTarget: false,
+            animationTime: 0
           });
-
-          // Update existing connections with PR data and ahead_by
-          return updatedConnections.map(connection => {
-            const key = `${connection.from}-${connection.to}`;
-            const pr = prConnectionMap.get(key);
-            if (pr) {
-              return {
-                ...connection,
-                pullRequest: pr,
-                commitCount: prAheadByMap[pr.id] ?? connection.commitCount ?? 0
-              };
-            }
-            return connection;
-          });
-        });
-
-        // Add new connections for PRs that don't have existing branch relationships
-        const existingConnectionKeys = new Set(
-          connections.map(c => `${c.from}-${c.to}`)
-        );
-
-        const newConnections: BranchConnection[] = [];
-        for (const pr of pullRequestsData) {
-          const key = `${pr.head.ref}-${pr.base.ref}`;
-          const headBranchExists = branches.some(b => b.name === pr.head.ref);
-          const baseBranchExists = branches.some(b => b.name === pr.base.ref);
-          if (headBranchExists && baseBranchExists && !existingConnectionKeys.has(key)) {
-            newConnections.push({
-              from: pr.head.ref,
-              to: pr.base.ref,
-              pullRequest: pr,
-              commitCount: prAheadByMap[pr.id] ?? 0
-            });
-          }
         }
-        if (newConnections.length > 0) {
-          setConnections(prev => [...prev, ...newConnections]);
-        }
-      } catch (error) {
-        console.error('Error fetching pull requests:', error);
-      }
-    };
-
-    fetchPullRequests();
-  }, [branches, loading, owner, repo, githubToken]);
-
-  //Fetch collaborators when component mounts
-  useEffect(() => {
-    const fetchCollaborators = async () => {
-      if (loading) return;
-
-      try {
-        // Prepare headers for GitHub API
-        const headers: HeadersInit = {
-          'Accept': 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28'
-        };
-
-        if (githubToken) {
-          headers['Authorization'] = `Bearer ${githubToken}`;
-        }
-
-        // Fetch collaborators
-        const collaboratorsUrl = `https://api.github.com/repos/${owner}/${repo}/collaborators?per_page=10`;
-        const response = await fetch(collaboratorsUrl, { headers });
-
-        if (!response.ok) {
-          console.error('Failed to fetch collaborators:', response.status);
-          return;
-        }
-
-        const collaboratorsData: Collaborator[] = await response.json();
-        setCollaborators(collaboratorsData);
-      } catch (error) {
-        console.error('Error fetching collaborators:', error);
-      }
-    };
-
-    fetchCollaborators();
-  }, [loading, owner, repo, githubToken]);
-
-  // Fetch issues when component mounts
-  useEffect(() => {
-    const fetchIssues = async () => {
-      if (loading) return;
-
-      try {
-        setLoadingIssues(true);
-
-        // Prepare headers for GitHub API
-        const headers: HeadersInit = {
-          'Accept': 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28'
-        };
-
-        if (githubToken) {
-          headers['Authorization'] = `Bearer ${githubToken}`;
-        }
-
-        // Fetch open issues (excluding pull requests)
-        const issuesUrl = `https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=50`;
-        const response = await fetch(issuesUrl, { headers });
-
-        if (!response.ok) {
-          console.error('Failed to fetch issues:', response.status);
-          return;
-        }
-
-        const issuesData: Issue[] = await response.json();
-
-        // Filter out pull requests (issues with pull_request property)
-        const actualIssues = issuesData.filter(issue => !issue.pull_request);
-        setIssues(actualIssues);
-      } catch (error) {
-        console.error('Error fetching issues:', error);
-      } finally {
-        setLoadingIssues(false);
-      }
-    };
-
-    fetchIssues();
-  }, [loading, owner, repo, githubToken]);
-
-  // Function to fetch commits for a specific branch
-  const fetchCommitsForBranch = async (branchName: string) => {
-    try {
-      // Add to loading state
-      setLoadingCommits(prev => new Set(prev).add(branchName));
-
-      // Prepare headers for GitHub API
-      const headers: HeadersInit = {
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28'
-      };
-
-      if (githubToken) {
-        headers['Authorization'] = `Bearer ${githubToken}`;
-      }
-
-      // Find the branch and its parent hierarchy
-      const branch = branches.find(b => b.name === branchName);
-      if (!branch) {
-        throw new Error(`Branch ${branchName} not found`);
-      }
-
-      // Collect all parent branches up to the root
-      const parentBranches: string[] = [];
-      let currentBranch = branch;
-      while (currentBranch.parent) {
-        parentBranches.push(currentBranch.parent);
-        currentBranch = branches.find(b => b.name === currentBranch.parent) || { name: '', commit: { sha: '', url: '' }, protected: false };
-        if (!currentBranch.name) break;
-      }
-
-      // Fetch commits for the branch (increase limit to get more commits for filtering)
-      const commitsUrl = `https://api.github.com/repos/${owner}/${repo}/commits?sha=${branchName}&per_page=50`;
-      const response = await fetch(commitsUrl, { headers });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch commits: ${response.status}`);
-      }
-
-      const branchCommits = await response.json();
-
-      // If this is the default branch (no parents), show all commits
-      if (parentBranches.length === 0) {
-        // Sort commits by date (newest first)
-        const sortedCommits = branchCommits.sort((a: any, b: any) =>
-          new Date(b.commit.author.date).getTime() - new Date(a.commit.author.date).getTime()
-        );
-
-        // Update the branch with commits and preserve hasUniqueCommits flag
-        setBranches(prevBranches =>
-          prevBranches.map(b =>
-            b.name === branchName
-              ? { ...b, commits: sortedCommits.slice(0, 10) }
-              : b
-          )
-        );
-        return;
-      }
-
-      // Fetch commits from all parent branches to exclude them
-      const parentCommitShas = new Set<string>();
-
-      for (const parentName of parentBranches) {
-        try {
-          const parentCommitsUrl = `https://api.github.com/repos/${owner}/${repo}/commits?sha=${parentName}&per_page=100`;
-          const parentResponse = await fetch(parentCommitsUrl, { headers });
-
-          if (parentResponse.ok) {
-            const parentCommits = await parentResponse.json();
-            parentCommits.forEach((commit: any) => {
-              parentCommitShas.add(commit.sha);
-            });
-          }
-        } catch (error) {
-          console.warn(`Error fetching commits for parent branch ${parentName}:`, error);
-        }
-      }
-
-      // Filter out commits that exist in parent branches
-      const uniqueCommits = branchCommits.filter((commit: any) =>
-        !parentCommitShas.has(commit.sha)
-      );
-
-      // Sort unique commits by date (newest first)
-      const sortedUniqueCommits = uniqueCommits.sort((a: any, b: any) =>
-        new Date(b.commit.author.date).getTime() - new Date(a.commit.author.date).getTime()
-      );
-
-      // Update the branch with unique commits and preserve hasUniqueCommits flag if already set
-      setBranches(prevBranches =>
-        prevBranches.map(b =>
-          b.name === branchName
-            ? {
-              ...b,
-              commits: sortedUniqueCommits.slice(0, 10),
-              // Only update hasUniqueCommits if it wasn't already determined
-              aheadBy: b.aheadBy !== undefined ? b.aheadBy : (uniqueCommits.length > 0 ? uniqueCommits.length : 0)
-            }
-            : b
-        )
-      );
-
-      // Update connection commit count
-      setConnections(prevConnections =>
-        prevConnections.map(conn => {
-          if (conn.from === branchName && !conn.pullRequest) {  // Changed: check from instead of to
-            return { ...conn, commitCount: uniqueCommits.length };
-          }
-          return conn;
-        })
-      );
-    } catch (error) {
-      console.error(`Error fetching commits for ${branchName}:`, error);
-    } finally {
-      // Remove from loading state
-      setLoadingCommits(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(branchName);
-        return newSet;
       });
     }
-  };
+  }, [branches, layoutAlignment, initializeCard, cardPhysics]);
+
+  // Data is now managed by the GitHub data hook - no manual fetching needed
+
+  // Use the hook method for fetching commits
+  const fetchCommitsForBranch = fetchBranchCommits;
 
   const handleStartDrag = (id: string, position: Position) => {
-    setDraggingBranch(id); // Set the dragging branch
-    setCardPhysics(prev => ({
-      ...prev,
-      [id]: {
-        ...prev[id],
-        isDragging: true,
-        lastDragPosition: position,
-        velocity: { x: 0, y: 0 },
-        originalPosition: prev[id]?.position // Store the original position
-      }
-    }));
+    startDrag(id, position);
   };
 
   const handleDrag = (id: string, position: Position) => {
-    setCardPhysics(prev => {
-      const card = prev[id];
-      const velocity = card.lastDragPosition ? {
-        x: position.x - card.lastDragPosition.x,
-        y: position.y - card.lastDragPosition.y
-      } : { x: 0, y: 0 };
+    // Use the physics engine hook method
+    updateDrag(id, position);
 
-      // Check if we're dragging over another branch
-      let newDragTarget: string | null = null;
-      const dragThreshold = (COLLISION_RADIUS * 1.5) / scale; // Slightly larger threshold for drag detection
+    // Check if we're dragging over another branch
+    let newDragTarget: string | null = null;
+    const dragThreshold = (30 * 1.5) / scale; // Slightly larger threshold for drag detection (30 is collision radius)
 
-      Object.entries(prev).forEach(([branchId, physics]) => {
-        if (branchId !== id) { // Don't check against self
-          const distance = getDistance(position, physics.position);
-          if (distance < dragThreshold) {
-            newDragTarget = branchId;
-          }
+    Object.entries(cardPhysics).forEach(([branchId, physics]) => {
+      if (branchId !== id) { // Don't check against self
+        const distance = getDistance(position, physics.position);
+        if (distance < dragThreshold) {
+          newDragTarget = branchId;
         }
-      });
-
-      // Always update drag target (including when it's null)
-      setDragTargetBranch(newDragTarget);
-      dragTargetRef.current = newDragTarget; // Update ref for immediate access
-
-      return {
-        ...prev,
-        [id]: {
-          ...card,
-          position,
-          velocity,
-          lastDragPosition: position
-        }
-      };
+      }
     });
+
+    // Always update drag target (including when it's null)
+    setDragTargetBranch(newDragTarget);
+    dragTargetRef.current = newDragTarget; // Update ref for immediate access
   };
 
   const handleEndDrag = (id: string) => {
     // Use ref for immediate access to the current drag target
     const targetBranch = dragTargetRef.current;
-    let bounceBack = false;
+    let returnToPosition = undefined;
 
     if (targetBranch) {
       console.log(`Dropped branch "${id}" onto branch "${targetBranch}"`);
@@ -1025,30 +263,18 @@ export default function DraggableCanvas({
         setShowPRContainer(true);
         setPRError(null);
       }
-      bounceBack = true; // Bounce back if dropped on another branch
+      // Set return position for bounce back
+      const currentCard = cardPhysics[id];
+      if (currentCard?.originalPosition) {
+        returnToPosition = currentCard.originalPosition;
+      }
     }
 
-    setDraggingBranch(null); // Clear dragging branch
     setDragTargetBranch(null); // Clear drag target
     dragTargetRef.current = null; // Clear ref
-    setCardPhysics(prev => {
-      const card = prev[id];
-      let newCard = {
-        ...card,
-        isDragging: false,
-        lastDragPosition: undefined
-      };
-      if (bounceBack && card.originalPosition) {
-        newCard = {
-          ...newCard,
-          returnTo: card.originalPosition
-        };
-      }
-      return {
-        ...prev,
-        [id]: newCard
-      };
-    });
+    
+    // Use the physics engine hook method
+    endDrag(id, returnToPosition);
   };
 
   const handleDoubleClick = (id: string) => {
@@ -1109,7 +335,7 @@ export default function DraggableCanvas({
     }
   };
 
-  // Create a pull request
+  // Create a pull request using the hook
   const createPullRequest = async () => {
     setIsCreatingPR(true);
     setIsValidatingBranches(true);
@@ -1158,65 +384,16 @@ export default function DraggableCanvas({
 
       setIsValidatingBranches(false);
 
-      const headers: HeadersInit = {
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'Content-Type': 'application/json'
-      };
-
-      if (githubToken) {
-        headers['Authorization'] = `Bearer ${githubToken}`;
-      }
-
-      const requestBody = {
+      // Use the hook method to create the pull request
+      await createPullRequestHook({
         title: prDetails.title.trim(),
-        body: prDetails.body.trim() || undefined, // Only send body if not empty
+        body: prDetails.body.trim() || undefined,
         head: prDetails.sourceBranch,
         base: prDetails.targetBranch,
         draft: false
-      };
-
-      console.log('Creating pull request with data:', requestBody);
-
-      const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(requestBody)
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('GitHub API error response:', errorData);
-
-        // Provide more specific error messages based on common validation failures
-        if (errorData.message === 'Validation Failed') {
-          if (errorData.errors && Array.isArray(errorData.errors)) {
-            const errorMessages = errorData.errors.map((err: any) => {
-              if (err.code === 'custom') {
-                return err.message;
-              } else if (err.field === 'head') {
-                return `Source branch "${prDetails.sourceBranch}" is not ahead of target branch "${prDetails.targetBranch}"`;
-              } else if (err.field === 'base') {
-                return `Target branch "${prDetails.targetBranch}" does not exist`;
-              } else if (err.field === 'title') {
-                return 'Pull request title is invalid';
-              } else {
-                return err.message || `Field "${err.field}" is invalid`;
-              }
-            });
-            throw new Error(`Validation failed: ${errorMessages.join(', ')}`);
-          } else {
-            throw new Error('Validation failed: Please check that the source branch has commits ahead of the target branch');
-          }
-        } else {
-          throw new Error(errorData.message || `Failed to create PR: ${response.status}`);
-        }
-      }
-
-      const prData = await response.json();
-      console.log('Pull request created:', prData);
-
-      // Close modal and refresh PR list
+      // Close the PR container and reset form
       setShowPRContainer(false);
       setPRDetails({
         sourceBranch: '',
@@ -1224,59 +401,6 @@ export default function DraggableCanvas({
         title: '',
         body: ''
       });
-
-      // Refresh pull requests
-      const pullsUrl = `https://api.github.com/repos/${owner}/${repo}/pulls?state=open&per_page=100`;
-      const pullsResponse = await fetch(pullsUrl, { headers });
-      if (pullsResponse.ok) {
-        const pullRequestsData: PullRequest[] = await pullsResponse.json();
-        setPullRequests(pullRequestsData);
-
-        // Update connections with the new PR
-        const existingConnection = connections.find(
-          c => c.from === prDetails.sourceBranch && c.to === prDetails.targetBranch
-        );
-
-        if (existingConnection) {
-          // Update existing connection with PR info
-          setConnections(prevConnections =>
-            prevConnections.map(c =>
-              (c.from === prDetails.sourceBranch && c.to === prDetails.targetBranch)
-                ? { ...c, pullRequest: prData }
-                : c
-            )
-          );
-        } else {
-          // Get commit count for the new PR
-          let commitCount = 0;
-          try {
-            // First check if the source branch has commits loaded
-            const sourceBranch = branches.find(b => b.name === prDetails.sourceBranch);
-            if (sourceBranch?.commits) {
-              commitCount = sourceBranch.commits.length;
-            } else {
-              // Fetch commit count from the PR API
-              const prCommitsUrl = `https://api.github.com/repos/${owner}/${repo}/pulls/${prData.number}/commits`;
-              const commitsResponse = await fetch(prCommitsUrl, { headers });
-
-              if (commitsResponse.ok) {
-                const commitsData = await commitsResponse.json();
-                commitCount = Math.min(commitsData.length, 5); // Cap at 5 for performance
-              }
-            }
-          } catch (error) {
-            console.warn(`Could not get commit count for new PR #${prData.number}`);
-          }
-
-          // Add new connection for the PR
-          setConnections(prevConnections => [...prevConnections, {
-            from: prDetails.sourceBranch,
-            to: prDetails.targetBranch,
-            pullRequest: prData,
-            commitCount
-          }]);
-        }
-      }
 
     } catch (error) {
       console.error('Error creating pull request:', error);
@@ -1287,131 +411,27 @@ export default function DraggableCanvas({
     }
   };
 
-  // Create a new branch
+  // Create a new branch using the hook
   const createBranch = async () => {
     setIsCreatingNewBranch(true);
     setBranchCreationError(null);
 
     try {
-      const headers: HeadersInit = {
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'Content-Type': 'application/json'
-      };
-
-      if (githubToken) {
-        headers['Authorization'] = `Bearer ${githubToken}`;
-      }
-
       // Get the SHA of the source branch
       const sourceBranch = branches.find(b => b.name === newBranchDetails.sourceBranch);
       if (!sourceBranch) {
         throw new Error('Source branch not found');
       }
 
-      // Create the reference (branch)
-      const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          ref: `refs/heads/${newBranchDetails.branchName}`,
-          sha: sourceBranch.commit.sha
-        })
-      });
+      // Use the hook method to create the branch
+      await createBranchHook(newBranchDetails.branchName, sourceBranch.commit.sha);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Failed to create branch: ${response.status}`);
-      }
-
-      const branchData = await response.json();
-      console.log('Branch created:', branchData);
-
-      // Create the new branch object
-      const newBranch: Branch = {
-        name: newBranchDetails.branchName,
-        commit: {
-          sha: sourceBranch.commit.sha,
-          url: sourceBranch.commit.url
-        },
-        protected: false,
-        parent: newBranchDetails.sourceBranch,
-        depth: (sourceBranch.depth || 0) + 1,
-        aheadBy: 0, // New branch starts with no unique commits
-        children: []
-      };
-
-      // Add the new branch to the branches array
-      setBranches(prevBranches => [...prevBranches, newBranch]);
-
-      // Add the new branch to physics state with a position near the source branch
-      const sourcePhysics = cardPhysics[newBranchDetails.sourceBranch];
-      if (sourcePhysics) {
-        // Calculate a better position based on tree layout principles
-        const sourceBranch = branches.find(b => b.name === newBranchDetails.sourceBranch);
-        const newDepth = (sourceBranch?.depth || 0) + 1;
-
-        // Find other branches at the same depth to calculate spacing
-        const branchesAtSameDepth = branches.filter(b => b.depth === newDepth);
-        const horizontalSpacing = 200;
-        const verticalSpacing = 150;
-
-        // Calculate position based on tree layout
-        let newX: number;
-        let newY: number;
-
-        if (branchesAtSameDepth.length === 0) {
-          // First branch at this depth, position it below the parent
-          newX = sourcePhysics.position.x;
-          newY = sourcePhysics.position.y + verticalSpacing;
-        } else {
-          // Position it to the right of existing branches at this depth
-          const maxX = Math.max(...branchesAtSameDepth.map(b => {
-            const physics = cardPhysics[b.name];
-            return physics ? physics.position.x : 0;
-          }));
-          newX = maxX + horizontalSpacing;
-          newY = sourcePhysics.position.y + verticalSpacing;
-        }
-
-        setCardPhysics(prev => ({
-          ...prev,
-          [newBranchDetails.branchName]: {
-            position: { x: newX, y: newY },
-            velocity: { x: 0, y: 0 },
-            isDragging: false
-          }
-        }));
-      }
-
-      // Add connection from source branch to new branch
-      setConnections(prevConnections => [...prevConnections, {
-        from: newBranchDetails.sourceBranch,
-        to: newBranchDetails.branchName,
-        commitCount: 0
-      }]);
-
-      // Update the source branch's children
-      setBranches(prevBranches =>
-        prevBranches.map(branch =>
-          branch.name === newBranchDetails.sourceBranch
-            ? { ...branch, children: [...(branch.children || []), newBranchDetails.branchName] }
-            : branch
-        )
-      );
-
-      // Close form
+      // Close form and reset
       setShowBranchCreationForm(false);
       setNewBranchDetails({
         sourceBranch: '',
         branchName: ''
       });
-
-      // Clear cache to ensure fresh data on next load
-      const cacheKey = `gitvis-branches-${owner}-${repo}`;
-      const cacheTimeKey = `${cacheKey}-time`;
-      localStorage.removeItem(cacheKey);
-      localStorage.removeItem(cacheTimeKey);
 
     } catch (error) {
       console.error('Error creating branch:', error);
@@ -1555,7 +575,7 @@ export default function DraggableCanvas({
       ref={canvasRef}
       className={`relative w-full h-screen bg-[#000d1a] overflow-hidden ${isPanning ? 'cursor-grabbing' : (isSpacePressed ? 'cursor-grab' : 'cursor-default')
         }`}
-      onMouseDown={handleMouseDown}
+      onMouseDown={handleCanvasMouseDown}
     >
       <style dangerouslySetInnerHTML={{ __html: customStyles }} />
 
@@ -1829,19 +849,14 @@ export default function DraggableCanvas({
             if (!showTreeView) {
               // Reset to tree layout
               const treePositions = calculateTreeLayout(branches, 1200, 800, layoutAlignment);
-              setCardPhysics(prev => {
-                const newPhysics = { ...prev };
-                Object.keys(newPhysics).forEach(branchName => {
-                  const position = treePositions[branchName];
-                  if (position) {
-                    newPhysics[branchName] = {
-                      ...newPhysics[branchName],
-                      position,
-                      velocity: { x: 0, y: 0 }
-                    };
-                  }
-                });
-                return newPhysics;
+              Object.keys(cardPhysics).forEach(branchName => {
+                const position = treePositions[branchName];
+                if (position) {
+                  updateCardPhysics(branchName, {
+                    position,
+                    velocity: { x: 0, y: 0 }
+                  });
+                }
               });
             }
           }}
@@ -1874,19 +889,14 @@ export default function DraggableCanvas({
             if (showTreeView) {
               // Reset to new layout
               const treePositions = calculateTreeLayout(branches, 1200, 800, value);
-              setCardPhysics(prev => {
-                const newPhysics = { ...prev };
-                Object.keys(newPhysics).forEach(branchName => {
-                  const position = treePositions[branchName];
-                  if (position) {
-                    newPhysics[branchName] = {
-                      ...newPhysics[branchName],
-                      position,
-                      velocity: { x: 0, y: 0 }
-                    };
-                  }
-                });
-                return newPhysics;
+              Object.keys(cardPhysics).forEach(branchName => {
+                const position = treePositions[branchName];
+                if (position) {
+                  updateCardPhysics(branchName, {
+                    position,
+                    velocity: { x: 0, y: 0 }
+                  });
+                }
               });
             }
           }}
@@ -2295,7 +1305,7 @@ export default function DraggableCanvas({
                 </div>
               ) : (
                 <div className="p-4 space-y-3">
-                  {loadingIssues ? (
+                  {false ? (
                     <div className="text-center py-8">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-400 mx-auto mb-3"></div>
                       <p className="text-gray-400 text-sm">Loading issues...</p>
