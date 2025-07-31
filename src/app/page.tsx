@@ -1,4 +1,4 @@
-import DraggableCanvas from '../components/DraggableCanvas';
+import { DraggableCanvas } from '../components/canvas';
 
 const owner = "angrygoose0";
 const repo = "testrepo";

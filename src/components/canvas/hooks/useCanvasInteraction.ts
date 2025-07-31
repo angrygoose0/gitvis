@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Canvas interaction hook for handling pan, zoom, and drag operations
  * Extracts canvas state management and interaction logic from the main component

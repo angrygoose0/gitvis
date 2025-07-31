@@ -1,18 +1,39 @@
 /**
  * Canvas module - main exports
+ * 
+ * This module provides a comprehensive canvas system for visualizing GitHub repository data
+ * including branches, commits, pull requests, and their relationships.
+ * 
+ * @example
+ * ```tsx
+ * import { DraggableCanvas } from './components/canvas';
+ * 
+ * function App() {
+ *   return (
+ *     <DraggableCanvas 
+ *       owner="facebook" 
+ *       repo="react" 
+ *       githubToken="your-token"
+ *     />
+ *   );
+ * }
+ * ```
  */
 
-// Re-export all types
+// Main component - the primary export for consumers
+export { default as DraggableCanvas } from '../DraggableCanvas';
+
+// Re-export all types for advanced usage
 export * from './types';
 
-// Components will be exported here once they are created
-// export { DraggableCanvas } from './components';
+// Re-export components for custom implementations
+export * from './components';
 
-// Services
+// Re-export services for external integrations
 export * from './services';
 
-// Hooks will be exported here once they are created
-// export * from './hooks';
+// Re-export hooks for custom canvas implementations
+export * from './hooks';
 
-// Utils will be exported here once they are created
-// export * from './utils';
+// Re-export utilities for helper functions
+export * from './utils';

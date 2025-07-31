@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Physics engine hook for node physics and animations
  * Handles velocity calculations, collision detection, animation frame management,

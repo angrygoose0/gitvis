@@ -56,6 +56,29 @@ interface DraggableCanvasProps {
   githubToken?: string; // Add support for GitHub token
 }
 
+/**
+ * DraggableCanvas - Interactive GitHub Repository Visualization
+ * 
+ * A comprehensive React component that provides an interactive canvas for visualizing
+ * GitHub repository data including branches, commits, pull requests, and their relationships.
+ * Features include pan/zoom interactions, physics-based animations, and real-time data fetching.
+ * 
+ * @param props - Configuration options for the canvas
+ * @param props.owner - GitHub repository owner (default: "facebook")
+ * @param props.repo - GitHub repository name (default: "react")
+ * @param props.githubToken - Optional GitHub API token for authenticated requests
+ * 
+ * @example
+ * ```tsx
+ * <DraggableCanvas 
+ *   owner="facebook" 
+ *   repo="react" 
+ *   githubToken="your-github-token"
+ * />
+ * ```
+ * 
+ * @returns A fully interactive canvas component for GitHub repository visualization
+ */
 export default function DraggableCanvas({
   owner = "facebook",
   repo = "react",

@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * GitHub Data Management Hook
  * Orchestrates data fetching, manages loading states, error handling, and implements caching
