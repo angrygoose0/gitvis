@@ -1,7 +1,7 @@
 import DraggableCanvas from '../components/DraggableCanvas';
 
 const owner = "angrygoose0";
-const repo = "gitvis";
+const repo = "testrepo";
 const githubToken = process.env.NEXT_PUBLIC_GITHUB_TOKEN || "";
 
 export default function Home() {

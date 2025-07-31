@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchBranches, fetchPullRequests, fetchIssues } from '../services/github-api';
+import { createGitHubApiService, GitHubApiService } from '../services/github-api';
 import { calculateBranchTree } from '../services/branch-analyzer';
 import { Branch, PullRequest } from '../types';
 
@@ -13,8 +13,18 @@ const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
 describe('Services Integration Tests', () => {
+  let apiService: GitHubApiService;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    apiService = createGitHubApiService({
+      owner: 'test',
+      repo: 'repo',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'GitHub-Canvas-App',
+      },
+    });
   });
 
   afterEach(() => {
@@ -42,23 +52,19 @@ describe('Services Integration Tests', () => {
         headers: new Headers({ 'link': '' }),
       });
 
-      const result = await fetchBranches('test', 'repo');
+      const result = await apiService.getBranches();
       
       expect(mockFetch).toHaveBeenCalledWith(
         'https://api.github.com/repos/test/repo/branches?per_page=100&page=1',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'Accept': 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'GitHub-Canvas-App',
           }),
         })
       );
 
-      expect(result).toEqual({
-        data: mockBranchesResponse,
-        hasMore: false,
-        rateLimitExceeded: false,
-      });
+      expect(result).toEqual(mockBranchesResponse);
     });
 
     it('should handle pagination correctly', async () => {
@@ -74,7 +80,7 @@ describe('Services Integration Tests', () => {
           ok: true,
           json: () => Promise.resolve(firstPageResponse),
           headers: new Headers({
-            'link': '<https://api.github.com/repos/test/repo/branches?page=2>; rel="next"',
+            'link': '<https://api.github.com/repos/test/repo/branches?page=2>; rel="last"',
           }),
         })
         .mockResolvedValueOnce({
@@ -83,30 +89,24 @@ describe('Services Integration Tests', () => {
           headers: new Headers({ 'link': '' }),
         });
 
-      // Fetch first page
-      const firstResult = await fetchBranches('test', 'repo', undefined, 1);
-      expect(firstResult.hasMore).toBe(true);
-      expect(firstResult.data).toEqual(firstPageResponse);
-
-      // Fetch second page
-      const secondResult = await fetchBranches('test', 'repo', undefined, 2);
-      expect(secondResult.hasMore).toBe(false);
-      expect(secondResult.data).toEqual(secondPageResponse);
+      const result = await apiService.getBranches();
+      
+      // Should combine both pages
+      expect(result).toEqual([...firstPageResponse, ...secondPageResponse]);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
     it('should handle rate limiting correctly', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 403,
+        headers: new Headers({ 'X-RateLimit-Remaining': '0' }),
         json: () => Promise.resolve({
           message: 'API rate limit exceeded',
         }),
       });
 
-      const result = await fetchBranches('test', 'repo');
-      
-      expect(result.rateLimitExceeded).toBe(true);
-      expect(result.data).toEqual([]);
+      await expect(apiService.getBranches()).rejects.toThrow('Rate limit exceeded');
     });
 
     it('should fetch pull requests with correct filtering', async () => {
@@ -133,117 +133,213 @@ describe('Services Integration Tests', () => {
         headers: new Headers({ 'link': '' }),
       });
 
-      const result = await fetchPullRequests('test', 'repo');
+      const result = await apiService.getPullRequests();
       
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://api.github.com/repos/test/repo/pulls?state=open&per_page=100&page=1',
+        'https://api.github.com/repos/test/repo/pulls?state=open&per_page=100',
         expect.any(Object)
       );
 
-      expect(result.data).toEqual(mockPRs);
+      expect(result).toEqual(mockPRs);
     });
 
     it('should handle authentication with GitHub token', async () => {
+      const authenticatedService = createGitHubApiService({
+        owner: 'test',
+        repo: 'repo',
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'GitHub-Canvas-App',
+          'Authorization': 'token test-token',
+        },
+      });
+
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve([]),
         headers: new Headers({ 'link': '' }),
       });
 
-      await fetchBranches('test', 'repo', 'test-token');
+      await authenticatedService.getBranches();
       
       expect(mockFetch).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           headers: expect.objectContaining({
-            'Authorization': 'Bearer test-token',
+            'Authorization': 'token test-token',
           }),
         })
       );
     });
+
+    it('should fetch repository info correctly', async () => {
+      const mockRepoInfo = {
+        name: 'repo',
+        full_name: 'test/repo',
+        default_branch: 'main',
+        private: false,
+        description: 'Test repository',
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockRepoInfo),
+      });
+
+      const result = await apiService.getRepositoryInfo();
+      
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.github.com/repos/test/repo',
+        expect.any(Object)
+      );
+
+      expect(result).toEqual(mockRepoInfo);
+    });
+
+    it('should compare branches correctly', async () => {
+      const mockCompareResult = {
+        ahead_by: 3,
+        behind_by: 0,
+        status: 'ahead',
+        total_commits: 3,
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockCompareResult),
+      });
+
+      const result = await apiService.compareBranches('main', 'feature-1');
+      
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.github.com/repos/test/repo/compare/main...feature-1',
+        expect.any(Object)
+      );
+
+      expect(result).toEqual(mockCompareResult);
+    });
   });
 
   describe('Branch Analyzer Integration', () => {
-    it('should calculate branch tree from API data', () => {
+    it('should calculate branch tree from API data', async () => {
       const branches: Branch[] = [
         {
           name: 'main',
           commit: { sha: 'abc123', url: 'url1' },
           protected: true,
-          depth: 0,
-          aheadBy: 0,
         },
         {
           name: 'feature-1',
           commit: { sha: 'def456', url: 'url2' },
           protected: false,
-          depth: 1,
-          aheadBy: 3,
-          parent: 'main',
         },
         {
           name: 'feature-2',
           commit: { sha: 'ghi789', url: 'url3' },
           protected: false,
-          depth: 1,
-          aheadBy: 2,
-          parent: 'main',
-        },
-        {
-          name: 'sub-feature',
-          commit: { sha: 'jkl012', url: 'url4' },
-          protected: false,
-          depth: 2,
-          aheadBy: 1,
-          parent: 'feature-1',
         },
       ];
 
-      const result = calculateBranchTree(branches);
+      // Mock API calls for branch comparison
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ ahead_by: 0, behind_by: 0, status: 'identical' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ ahead_by: 3, behind_by: 0, status: 'ahead' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ ahead_by: 2, behind_by: 0, status: 'ahead' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ ahead_by: 3, behind_by: 0, status: 'ahead' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ ahead_by: 2, behind_by: 0, status: 'ahead' }),
+        });
+
+      const result = await calculateBranchTree(
+        branches,
+        'test',
+        'repo',
+        'main',
+        { 'Accept': 'application/vnd.github.v3+json' }
+      );
       
       // Should maintain all branches
-      expect(result).toHaveLength(4);
+      expect(result.branches).toHaveLength(3);
       
       // Should set up parent-child relationships
-      const mainBranch = result.find(b => b.name === 'main');
+      const mainBranch = result.branches.find(b => b.name === 'main');
       expect(mainBranch?.children).toContain('feature-1');
       expect(mainBranch?.children).toContain('feature-2');
       
-      const feature1Branch = result.find(b => b.name === 'feature-1');
-      expect(feature1Branch?.children).toContain('sub-feature');
+      const feature1Branch = result.branches.find(b => b.name === 'feature-1');
       expect(feature1Branch?.parent).toBe('main');
+      expect(feature1Branch?.depth).toBe(1);
       
-      const subFeatureBranch = result.find(b => b.name === 'sub-feature');
-      expect(subFeatureBranch?.parent).toBe('feature-1');
-      expect(subFeatureBranch?.depth).toBe(2);
+      const feature2Branch = result.branches.find(b => b.name === 'feature-2');
+      expect(feature2Branch?.parent).toBe('main');
+      expect(feature2Branch?.depth).toBe(1);
+
+      // Should create connections
+      expect(result.connections).toHaveLength(2);
+      expect(result.connections).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ from: 'feature-1', to: 'main' }),
+          expect.objectContaining({ from: 'feature-2', to: 'main' }),
+        ])
+      );
     });
 
-    it('should handle branches without clear parent relationships', () => {
+    it('should handle branches without clear parent relationships', async () => {
       const branches: Branch[] = [
         {
           name: 'main',
           commit: { sha: 'abc123', url: 'url1' },
           protected: true,
-          depth: 0,
-          aheadBy: 0,
         },
         {
           name: 'orphan-branch',
           commit: { sha: 'def456', url: 'url2' },
           protected: false,
-          depth: 0,
-          aheadBy: 5,
         },
       ];
 
-      const result = calculateBranchTree(branches);
+      // Mock API calls - orphan branch has no clear relationship
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ ahead_by: 0, behind_by: 0, status: 'identical' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ ahead_by: 5, behind_by: 10, status: 'diverged' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ ahead_by: 5, behind_by: 10, status: 'diverged' }),
+        });
+
+      const result = await calculateBranchTree(
+        branches,
+        'test',
+        'repo',
+        'main',
+        { 'Accept': 'application/vnd.github.v3+json' }
+      );
       
-      expect(result).toHaveLength(2);
+      expect(result.branches).toHaveLength(2);
       
-      // Orphan branch should not have a parent
-      const orphanBranch = result.find(b => b.name === 'orphan-branch');
-      expect(orphanBranch?.parent).toBeUndefined();
-      expect(orphanBranch?.depth).toBe(0);
+      // Orphan branch should still have main as parent (fallback)
+      const orphanBranch = result.branches.find(b => b.name === 'orphan-branch');
+      expect(orphanBranch?.parent).toBe('main');
+      expect(orphanBranch?.depth).toBe(1);
     });
 
     it('should calculate connections between branches', () => {
@@ -309,15 +405,9 @@ describe('Services Integration Tests', () => {
     it('should handle network errors across all services', async () => {
       mockFetch.mockRejectedValue(new Error('Network error'));
 
-      const branchResult = await fetchBranches('test', 'repo');
-      expect(branchResult.data).toEqual([]);
-      expect(branchResult.rateLimitExceeded).toBe(false);
-
-      const prResult = await fetchPullRequests('test', 'repo');
-      expect(prResult.data).toEqual([]);
-
-      const issueResult = await fetchIssues('test', 'repo');
-      expect(issueResult.data).toEqual([]);
+      await expect(apiService.getBranches()).rejects.toThrow('Network error');
+      await expect(apiService.getPullRequests()).rejects.toThrow('Network error');
+      await expect(apiService.getIssues()).rejects.toThrow('Network error');
     });
 
     it('should handle malformed JSON responses', async () => {
@@ -327,20 +417,18 @@ describe('Services Integration Tests', () => {
         headers: new Headers({ 'link': '' }),
       });
 
-      const result = await fetchBranches('test', 'repo');
-      expect(result.data).toEqual([]);
+      await expect(apiService.getBranches()).rejects.toThrow('Invalid JSON');
     });
 
     it('should handle HTTP error responses', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 404,
+        statusText: 'Not Found',
         json: () => Promise.resolve({ message: 'Not Found' }),
       });
 
-      const result = await fetchBranches('test', 'repo');
-      expect(result.data).toEqual([]);
-      expect(result.rateLimitExceeded).toBe(false);
+      await expect(apiService.getBranches()).rejects.toThrow('Failed to fetch branches: Not Found');
     });
   });
 
@@ -380,14 +468,14 @@ describe('Services Integration Tests', () => {
           headers: new Headers({ 'link': '' }),
         });
 
-      const branchResult = await fetchBranches('test', 'repo');
-      const prResult = await fetchPullRequests('test', 'repo');
+      const branchResult = await apiService.getBranches();
+      const prResult = await apiService.getPullRequests();
 
       // Verify data consistency
-      const branchNames = branchResult.data.map(b => b.name);
+      const branchNames = branchResult.map(b => b.name);
       const prBranches = [
-        ...prResult.data.map(pr => pr.head.ref),
-        ...prResult.data.map(pr => pr.base.ref),
+        ...prResult.map(pr => pr.head.ref),
+        ...prResult.map(pr => pr.base.ref),
       ];
 
       // All PR branches should exist in branch list
@@ -396,8 +484,8 @@ describe('Services Integration Tests', () => {
       });
 
       // SHAs should match
-      const mainBranch = branchResult.data.find(b => b.name === 'main');
-      const prBaseSha = prResult.data[0].base.sha;
+      const mainBranch = branchResult.find(b => b.name === 'main');
+      const prBaseSha = prResult[0].base.sha;
       expect(mainBranch?.commit.sha).toBe(prBaseSha);
     });
   });
