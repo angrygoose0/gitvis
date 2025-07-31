@@ -32,7 +32,7 @@ Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
 describe('Hooks Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Setup successful API responses
     mockFetch.mockImplementation((url: string) => {
       if (url.includes('/repos/')) {
@@ -114,7 +114,7 @@ describe('Hooks Integration Tests', () => {
 
       // Transform coordinates using canvas interaction
       const worldPosition = canvasResult.current.screenToWorldCoords({ x: 200, y: 200 });
-      
+
       // Update physics with transformed position
       act(() => {
         physicsResult.current.startDrag('test-card', worldPosition);
@@ -149,7 +149,7 @@ describe('Hooks Integration Tests', () => {
 
       // Mouse coordinates should be transformed correctly with zoom
       const mouseWorldCoords = canvasResult.current.mouseToWorldCoords(400, 400);
-      
+
       // At 2x zoom, screen coordinate 400 should map to world coordinate 200
       expect(mouseWorldCoords.x).toBe(200);
       expect(mouseWorldCoords.y).toBe(200);
@@ -262,7 +262,7 @@ describe('Hooks Integration Tests', () => {
       });
 
       // Mock commits response
-      mockFetch.mockImplementationOnce(() => 
+      mockFetch.mockImplementationOnce(() =>
         Promise.resolve({
           ok: true,
           json: () => Promise.resolve([
@@ -285,7 +285,7 @@ describe('Hooks Integration Tests', () => {
       // Should update loading state in physics
       const cardPhysics = physicsResult.current.cardPhysics['main'];
       expect(cardPhysics).toBeDefined();
-      
+
       // Loading state should be managed by GitHub data hook
       expect(githubResult.current.loading.loadingCommits.has('main')).toBe(false);
     });
@@ -493,7 +493,7 @@ describe('Hooks Integration Tests', () => {
       const branchName = githubResult.current.data.branches[0]?.name;
       if (branchName) {
         const dragPosition = canvasResult.current.mouseToWorldCoords(200, 200);
-        
+
         act(() => {
           physicsResult.current.startDrag(branchName, dragPosition);
           physicsResult.current.updateDrag(branchName, { x: dragPosition.x + 50, y: dragPosition.y + 30 });
@@ -502,7 +502,7 @@ describe('Hooks Integration Tests', () => {
       }
 
       // 6. User loads commits for a branch
-      mockFetch.mockImplementationOnce(() => 
+      mockFetch.mockImplementationOnce(() =>
         Promise.resolve({
           ok: true,
           json: () => Promise.resolve([
@@ -522,7 +522,7 @@ describe('Hooks Integration Tests', () => {
       expect(canvasResult.current.offset).toEqual({ x: 100, y: 50 });
       expect(Object.keys(physicsResult.current.cardPhysics).length).toBeGreaterThan(0);
       expect(githubResult.current.data.branches.length).toBeGreaterThan(0);
-      
+
       if (branchName) {
         expect(physicsResult.current.cardPhysics[branchName].isDragging).toBe(false);
       }

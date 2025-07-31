@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Position, CanvasState, DragState } from '../types/canvas';
+import { Position } from '../types/canvas';
 import { screenToWorld, mouseToWorld } from '../utils/coordinate-transformer';
 
 export interface CanvasInteractionConfig {
@@ -79,8 +79,8 @@ export const useCanvasInteraction = (
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('keydown', handleKeyDown, { passive: false });
+    window.addEventListener('keyup', handleKeyUp, { passive: false });
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);

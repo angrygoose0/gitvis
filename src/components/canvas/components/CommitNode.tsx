@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { memo } from 'react';
 import { Position } from '../types';
 
 interface Commit {
@@ -53,7 +53,7 @@ const getCommitNodePosition = (index: number, total: number, animationTime: numb
 /**
  * CommitNode component renders individual commit nodes that orbit around branch nodes
  */
-export const CommitNode: React.FC<CommitNodeProps> = ({
+const CommitNodeComponent: React.FC<CommitNodeProps> = ({
   commit,
   index,
   totalCommits,
@@ -65,7 +65,10 @@ export const CommitNode: React.FC<CommitNodeProps> = ({
   textOpacity,
   commitTextOpacity
 }) => {
-  const commitPos = getCommitNodePosition(index, totalCommits, animationTime);
+  const commitPos = React.useMemo(() => 
+    getCommitNodePosition(index, totalCommits, animationTime),
+    [index, totalCommits, animationTime]
+  );
 
   return (
     <div
@@ -111,5 +114,21 @@ export const CommitNode: React.FC<CommitNodeProps> = ({
     </div>
   );
 };
+
+// Memoize the component to prevent unnecessary re-renders
+export const CommitNode = memo(CommitNodeComponent, (prevProps, nextProps) => {
+  // Custom comparison function for better performance
+  return (
+    prevProps.commit.sha === nextProps.commit.sha &&
+    prevProps.index === nextProps.index &&
+    prevProps.totalCommits === nextProps.totalCommits &&
+    prevProps.animationTime === nextProps.animationTime &&
+    prevProps.scale === nextProps.scale &&
+    prevProps.scaledRadius === nextProps.scaledRadius &&
+    prevProps.scaledCommitRadius === nextProps.scaledCommitRadius &&
+    prevProps.textOpacity === nextProps.textOpacity &&
+    prevProps.commitTextOpacity === nextProps.commitTextOpacity
+  );
+});
 
 export default CommitNode;

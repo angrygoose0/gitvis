@@ -64,14 +64,34 @@ describe('Simple Canvas Integration Tests', () => {
       }).not.toThrow();
     });
 
-    it('should display the repository name in header', () => {
-      mockFetch.mockImplementation(() => new Promise(() => {}));
+    it('should display the repository name in header when loaded', async () => {
+      // Mock successful API responses for all endpoints
+      mockFetch.mockImplementation((url) => {
+        if (url.includes('/repos/')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({
+              name: 'test-repo',
+              full_name: 'test/test-repo',
+              default_branch: 'main',
+              private: false,
+            }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([]),
+        });
+      });
 
       render(<DraggableCanvas owner="test" repo="test-repo" />);
       
-      // The header should show loading state or repo name
-      const header = document.querySelector('h1');
-      expect(header).toBeInTheDocument();
+      // Wait for loading to complete and header to appear
+      await waitFor(() => {
+        const header = document.querySelector('h1');
+        expect(header).toBeInTheDocument();
+        expect(header?.textContent).toContain('test/test-repo');
+      }, { timeout: 3000 });
     });
   });
 

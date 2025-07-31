@@ -6,6 +6,7 @@ import { usePhysicsEngine } from './canvas/hooks/usePhysicsEngine';
 import { useGitHubData } from './canvas/hooks/useGitHubData';
 import { calculateTreeLayout } from './canvas/utils/layout-calculator';
 import { formatDate } from './canvas/utils/date-formatter';
+import { usePerformanceMonitor } from './canvas/utils/performance-monitor';
 import { ConnectionLine } from './canvas/components/ConnectionLine';
 import { CanvasNode } from './canvas/components/CanvasNode';
 import { Position } from './canvas/types/canvas';
@@ -77,6 +78,17 @@ export default function DraggableCanvas({
     repo,
     githubToken,
   });
+
+  // Performance monitoring
+  const performanceMonitor = usePerformanceMonitor();
+
+  // Start performance monitoring on mount
+  useEffect(() => {
+    performanceMonitor.startMonitoring();
+    return () => {
+      performanceMonitor.stopMonitoring();
+    };
+  }, [performanceMonitor]);
 
   // Layout and UI state
   const LAYOUT_OPTIONS = [
@@ -529,6 +541,20 @@ export default function DraggableCanvas({
       delete (window as any).onBranchCreationStart;
     };
   }, [handleBranchCreationStart]);
+
+  // Track render performance
+  useEffect(() => {
+    performanceMonitor.startRender();
+    const nodeCount = branches.filter(branch => showMergedBranches || branch.aheadBy !== 0).length;
+    const connectionCount = connections.filter(connection => {
+      const fromBranch = branches.find(b => b.name === connection.from);
+      const toBranch = branches.find(b => b.name === connection.to);
+      return (showMergedBranches || fromBranch?.aheadBy !== 0) &&
+        (showMergedBranches || toBranch?.aheadBy !== 0);
+    }).length;
+    
+    performanceMonitor.endRender(nodeCount, connectionCount);
+  });
 
   if (loading) {
     return (

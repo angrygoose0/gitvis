@@ -3,7 +3,7 @@
  * Handles pull request status visualization and commit flow animations
  */
 
-import React from 'react';
+import React, { memo } from 'react';
 import { ConnectionLineProps } from '../types/components';
 import { worldToScreen } from '../utils/coordinate-transformer';
 
@@ -18,7 +18,7 @@ const NODE_RADIUS = 8;
  * - Glowing effects and gradients
  * - PR information display
  */
-export const ConnectionLine: React.FC<ConnectionLineProps> = ({ 
+const ConnectionLineComponent: React.FC<ConnectionLineProps> = ({ 
   from, 
   to, 
   scale, 
@@ -26,49 +26,61 @@ export const ConnectionLine: React.FC<ConnectionLineProps> = ({
   pullRequest, 
   commitCount = 0 
 }) => {
-  // Calculate screen positions (center of nodes)
-  const fromScreen = worldToScreen(from, scale, offset);
-  const toScreen = worldToScreen(to, scale, offset);
+  // Memoize screen position calculations
+  const fromScreen = React.useMemo(() => worldToScreen(from, scale, offset), [from, scale, offset]);
+  const toScreen = React.useMemo(() => worldToScreen(to, scale, offset), [to, scale, offset]);
 
-  // Calculate the angle and distance
-  const dx = toScreen.x - fromScreen.x;
-  const dy = toScreen.y - fromScreen.y;
-  const distance = Math.sqrt(dx * dx + dy * dy);
-  const angle = Math.atan2(dy, dx);
+  // Memoize geometric calculations
+  const { dx, dy, distance, angle, nodeRadius, fromEdge, toEdge } = React.useMemo(() => {
+    const dx = toScreen.x - fromScreen.x;
+    const dy = toScreen.y - fromScreen.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx);
+    const nodeRadius = NODE_RADIUS * scale;
+    
+    return {
+      dx,
+      dy,
+      distance,
+      angle,
+      nodeRadius,
+      fromEdge: {
+        x: fromScreen.x + Math.cos(angle) * nodeRadius,
+        y: fromScreen.y + Math.sin(angle) * nodeRadius
+      },
+      toEdge: {
+        x: toScreen.x - Math.cos(angle) * nodeRadius,
+        y: toScreen.y - Math.sin(angle) * nodeRadius
+      }
+    };
+  }, [fromScreen, toScreen, scale]);
 
-  // Adjust start and end points to be at the edge of the nodes
-  const nodeRadius = NODE_RADIUS * scale;
-  const fromEdge = {
-    x: fromScreen.x + Math.cos(angle) * nodeRadius,
-    y: fromScreen.y + Math.sin(angle) * nodeRadius
-  };
-  const toEdge = {
-    x: toScreen.x - Math.cos(angle) * nodeRadius,
-    y: toScreen.y - Math.sin(angle) * nodeRadius
-  };
-
-  // Determine stroke color based on pull request state
-  const getStrokeColor = (): string => {
+  // Memoize stroke color calculation
+  const strokeColorRGB = React.useMemo(() => {
     if (pullRequest) {
       if (pullRequest.draft) return "156, 163, 175"; // Gray for draft PRs
       if (pullRequest.mergeable_state === 'blocked') return "239, 68, 68"; // Red for blocked PRs
       return "34, 197, 94"; // Green for ready PRs
     }
     return "99, 102, 241"; // Blue for regular connections
-  };
+  }, [pullRequest]);
 
-  const strokeColorRGB = getStrokeColor();
   const glowIntensity = pullRequest ? 0.8 : 0.5;
 
-  // Calculate number of pulses to show (max 5 for performance)
-  const numPulses = Math.min(commitCount, 5);
-  const pulseDelay = numPulses > 0 ? 3 / numPulses : 0; // Distribute pulses evenly over animation duration
+  // Memoize pulse calculations
+  const { numPulses, pulseDelay } = React.useMemo(() => {
+    const numPulses = Math.min(commitCount, 5);
+    const pulseDelay = numPulses > 0 ? 3 / numPulses : 0;
+    return { numPulses, pulseDelay };
+  }, [commitCount]);
 
-  // Generate unique IDs for gradients and filters to avoid conflicts
-  const gradientId = `line-gradient-${from.x}-${from.y}-${to.x}-${to.y}`;
-  const prPulseId = `pr-pulse-${pullRequest?.id || 'default'}`;
-  const glowId = `glow-${from.x}-${from.y}-${to.x}-${to.y}`;
-  const pathId = `path-${from.x}-${from.y}-${to.x}-${to.y}`;
+  // Memoize unique IDs for gradients and filters
+  const { gradientId, prPulseId, glowId, pathId } = React.useMemo(() => ({
+    gradientId: `line-gradient-${from.x}-${from.y}-${to.x}-${to.y}`,
+    prPulseId: `pr-pulse-${pullRequest?.id || 'default'}`,
+    glowId: `glow-${from.x}-${from.y}-${to.x}-${to.y}`,
+    pathId: `path-${from.x}-${from.y}-${to.x}-${to.y}`
+  }), [from.x, from.y, to.x, to.y, pullRequest?.id]);
 
   return (
     <svg
@@ -248,3 +260,21 @@ export const ConnectionLine: React.FC<ConnectionLineProps> = ({
     </svg>
   );
 };
+
+// Memoize the component to prevent unnecessary re-renders
+export const ConnectionLine = memo(ConnectionLineComponent, (prevProps, nextProps) => {
+  // Custom comparison function for better performance
+  return (
+    prevProps.from.x === nextProps.from.x &&
+    prevProps.from.y === nextProps.from.y &&
+    prevProps.to.x === nextProps.to.x &&
+    prevProps.to.y === nextProps.to.y &&
+    prevProps.scale === nextProps.scale &&
+    prevProps.offset.x === nextProps.offset.x &&
+    prevProps.offset.y === nextProps.offset.y &&
+    prevProps.commitCount === nextProps.commitCount &&
+    prevProps.pullRequest?.id === nextProps.pullRequest?.id &&
+    prevProps.pullRequest?.draft === nextProps.pullRequest?.draft &&
+    prevProps.pullRequest?.mergeable_state === nextProps.pullRequest?.mergeable_state
+  );
+});

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, memo, useCallback } from 'react';
 import { worldToScreen, screenToWorld, mouseToWorld } from '../utils/coordinate-transformer';
 import { CommitNode } from './CommitNode';
 import { Position, Branch } from '../types';
@@ -33,7 +33,7 @@ const MIN_SCALE_FOR_COMMIT_TEXT = 1.5; // Minimum scale to show commit text - ad
  * CanvasNode component renders individual branch nodes with their visual styling,
  * interaction handlers, and integrated commit nodes
  */
-export const CanvasNode: React.FC<CanvasNodeProps> = ({
+const CanvasNodeComponent: React.FC<CanvasNodeProps> = ({
   id,
   branch,
   position,
@@ -53,50 +53,54 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   const [dragOffset, setDragOffset] = useState<Position>({ x: 0, y: 0 });
   const nodeRef = useRef<HTMLDivElement>(null);
 
-  // Calculate screen position from world position
-  const screenPosition = worldToScreen(position, scale, offset);
+  // Memoize expensive calculations
+  const screenPosition = React.useMemo(() => 
+    worldToScreen(position, scale, offset), 
+    [position, scale, offset]
+  );
 
-  // Calculate scaled radius
-  const scaledRadius = NODE_RADIUS * scale;
-  const scaledCommitRadius = COMMIT_NODE_RADIUS * scale;
+  const scaledRadius = React.useMemo(() => NODE_RADIUS * scale, [scale]);
+  const scaledCommitRadius = React.useMemo(() => COMMIT_NODE_RADIUS * scale, [scale]);
 
-  // Calculate text opacity based on scale
-  const textOpacity = scale < MIN_SCALE_FOR_TEXT ? 0 :
-    scale > MAX_SCALE_FOR_FULL_TEXT ? 1 :
-      (scale - MIN_SCALE_FOR_TEXT) / (MAX_SCALE_FOR_FULL_TEXT - MIN_SCALE_FOR_TEXT);
+  const textOpacity = React.useMemo(() => {
+    if (scale < MIN_SCALE_FOR_TEXT) return 0;
+    if (scale > MAX_SCALE_FOR_FULL_TEXT) return 1;
+    return (scale - MIN_SCALE_FOR_TEXT) / (MAX_SCALE_FOR_FULL_TEXT - MIN_SCALE_FOR_TEXT);
+  }, [scale]);
 
-  // Calculate commit text opacity
-  const commitTextOpacity = scale < MIN_SCALE_FOR_COMMIT_TEXT ? 0 :
-    scale > MAX_SCALE_FOR_FULL_TEXT ? 1 :
-      (scale - MIN_SCALE_FOR_COMMIT_TEXT) / (MAX_SCALE_FOR_FULL_TEXT - MIN_SCALE_FOR_COMMIT_TEXT);
+  const commitTextOpacity = React.useMemo(() => {
+    if (scale < MIN_SCALE_FOR_COMMIT_TEXT) return 0;
+    if (scale > MAX_SCALE_FOR_FULL_TEXT) return 1;
+    return (scale - MIN_SCALE_FOR_COMMIT_TEXT) / (MAX_SCALE_FOR_FULL_TEXT - MIN_SCALE_FOR_COMMIT_TEXT);
+  }, [scale]);
 
-  // Determine node color based on branch status
-  const getNodeColor = () => {
-    if (isDragTarget) return 'bg-orange-400'; // Orange when drag target
-    if (branch.aheadBy === 0) return 'bg-gray-700'; // Grey when not ahead
+  // Memoize color calculations
+  const nodeColor = React.useMemo(() => {
+    if (isDragTarget) return 'bg-orange-400';
+    if (branch.aheadBy === 0) return 'bg-gray-700';
     if (branch.depth === 0) return 'bg-green-400';
     if (branch.depth === 1) return 'bg-blue-400';
     return 'bg-purple-400';
-  };
+  }, [isDragTarget, branch.aheadBy, branch.depth]);
 
-  const getNodeGlowColor = () => {
-    if (isDragTarget) return 'rgba(251, 146, 60, 0.9)'; // Orange glow when drag target
-    if (branch.aheadBy === 0) return 'rgba(156, 163, 175, 0.6)'; // Grey glow when not ahead
+  const nodeGlowColor = React.useMemo(() => {
+    if (isDragTarget) return 'rgba(251, 146, 60, 0.9)';
+    if (branch.aheadBy === 0) return 'rgba(156, 163, 175, 0.6)';
     if (branch.depth === 0) return 'rgba(74, 222, 128, 0.8)';
     if (branch.depth === 1) return 'rgba(96, 165, 250, 0.8)';
     return 'rgba(196, 181, 253, 0.8)';
-  };
+  }, [isDragTarget, branch.aheadBy, branch.depth]);
 
-  const getNodeBorderColor = () => {
-    if (isDragTarget) return 'border-orange-300/80'; // Orange border when drag target
+  const nodeBorderColor = React.useMemo(() => {
+    if (isDragTarget) return 'border-orange-300/80';
     if (isDragging) return 'border-white/50';
-    if (branch.aheadBy === 0) return 'border-gray-600'; // Grey border when not ahead
+    if (branch.aheadBy === 0) return 'border-gray-600';
     if (branch.depth === 0) return 'border-green-300/50';
     if (branch.depth === 1) return 'border-blue-300/50';
     return 'border-purple-300/50';
-  };
+  }, [isDragTarget, isDragging, branch.aheadBy, branch.depth]);
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
     // Only start dragging node if space is NOT pressed
     if (!isSpacePressed) {
       e.stopPropagation(); // Prevent canvas pan
@@ -150,14 +154,14 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
         }
       }
     }
-  };
+  }, [isSpacePressed, id, scale, offset, dragOffset, onDrag, onEndDrag, onStartDrag, position]);
 
-  const handleDoubleClick = (e: React.MouseEvent) => {
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (onDoubleClick) {
       onDoubleClick(id);
     }
-  };
+  }, [onDoubleClick, id]);
 
   return (
     <div
@@ -176,24 +180,24 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
     >
       {/* Node circle */}
       <div
-        className={`absolute inset-0 rounded-full ${getNodeColor()} ${getNodeBorderColor()} border transition-all duration-200 ${branch.aheadBy === 0 ? 'opacity-40' : ''
+        className={`absolute inset-0 rounded-full ${nodeColor} ${nodeBorderColor} border transition-all duration-200 ${branch.aheadBy === 0 ? 'opacity-40' : ''
           }`}
         style={{
           boxShadow: isDragTarget
-            ? `0 0 40px ${getNodeGlowColor()}, 0 0 80px ${getNodeGlowColor()}, inset 0 0 30px ${getNodeGlowColor()}` // Bigger glow for drag target
+            ? `0 0 40px ${nodeGlowColor}, 0 0 80px ${nodeGlowColor}, inset 0 0 30px ${nodeGlowColor}` // Bigger glow for drag target
             : isDragging
-              ? `0 0 30px ${getNodeGlowColor()}, 0 0 60px ${getNodeGlowColor()}, inset 0 0 20px ${getNodeGlowColor()}`
-              : `0 0 20px ${getNodeGlowColor()}, 0 0 40px ${getNodeGlowColor()}, inset 0 0 15px ${getNodeGlowColor()}`,
+              ? `0 0 30px ${nodeGlowColor}, 0 0 60px ${nodeGlowColor}, inset 0 0 20px ${nodeGlowColor}`
+              : `0 0 20px ${nodeGlowColor}, 0 0 40px ${nodeGlowColor}, inset 0 0 15px ${nodeGlowColor}`,
           transform: isDragTarget ? 'scale(1.5)' : isDragging ? 'scale(1.3)' : 'scale(1)', // Bigger scale for drag target
           background: `radial-gradient(circle at 30% 30%, ${branch.aheadBy === 0 ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.4)'
-            }, ${getNodeColor().replace('bg-', 'rgba(').replace('400', '400, 1)').replace('700', '700, 1)').replace('green', '74, 222, 128').replace('blue', '96, 165, 250').replace('purple', '196, 181, 253').replace('gray', '156, 163, 175').replace('orange', '251, 146, 60')})`,
+            }, ${nodeColor.replace('bg-', 'rgba(').replace('400', '400, 1)').replace('700', '700, 1)').replace('green', '74, 222, 128').replace('blue', '96, 165, 250').replace('purple', '196, 181, 253').replace('gray', '156, 163, 175').replace('orange', '251, 146, 60')})`,
         }}
       >
         {/* Inner glow effect */}
         <div
           className="absolute inset-1 rounded-full"
           style={{
-            background: `radial-gradient(circle at center, ${getNodeGlowColor()}, transparent)`,
+            background: `radial-gradient(circle at center, ${nodeGlowColor}, transparent)`,
             filter: 'blur(2px)',
           }}
         />
@@ -270,5 +274,29 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
     </div>
   );
 };
+
+// Memoize the component to prevent unnecessary re-renders
+export const CanvasNode = memo(CanvasNodeComponent, (prevProps, nextProps) => {
+  // Custom comparison function for better performance
+  return (
+    prevProps.id === nextProps.id &&
+    prevProps.isDragging === nextProps.isDragging &&
+    prevProps.scale === nextProps.scale &&
+    prevProps.offset.x === nextProps.offset.x &&
+    prevProps.offset.y === nextProps.offset.y &&
+    prevProps.position.x === nextProps.position.x &&
+    prevProps.position.y === nextProps.position.y &&
+    prevProps.isSpacePressed === nextProps.isSpacePressed &&
+    prevProps.isExpanded === nextProps.isExpanded &&
+    prevProps.isLoadingCommits === nextProps.isLoadingCommits &&
+    prevProps.isDragTarget === nextProps.isDragTarget &&
+    prevProps.branch.name === nextProps.branch.name &&
+    prevProps.branch.aheadBy === nextProps.branch.aheadBy &&
+    prevProps.branch.depth === nextProps.branch.depth &&
+    prevProps.branch.protected === nextProps.branch.protected &&
+    prevProps.branch.commit.sha === nextProps.branch.commit.sha &&
+    prevProps.animationTime === nextProps.animationTime
+  );
+});
 
 export default CanvasNode;
