@@ -227,20 +227,27 @@ export default function DraggableCanvas({
       // Initialize physics with tree layout
       branches.forEach((branch) => {
         const position = treePositions[branch.name] || { x: 100, y: 100 };
-        if (!cardPhysics[branch.name]) {
-          initializeCard(branch.name, {
-            position,
-            velocity: { x: 0, y: 0 },
-            isDragging: false,
-            isExpanded: false,
-            isLoadingCommits: false,
-            isDragTarget: false,
-            animationTime: 0
-          });
-        }
+        // Only initialize if the card doesn't exist yet
+        setCardPhysics(prev => {
+          if (!prev[branch.name]) {
+            return {
+              ...prev,
+              [branch.name]: {
+                position,
+                velocity: { x: 0, y: 0 },
+                isDragging: false,
+                isExpanded: false,
+                isLoadingCommits: false,
+                isDragTarget: false,
+                animationTime: 0
+              }
+            };
+          }
+          return prev;
+        });
       });
     }
-  }, [branches, layoutAlignment, initializeCard, cardPhysics]);
+  }, [branches, layoutAlignment, setCardPhysics]);
 
   // Data is now managed by the GitHub data hook - no manual fetching needed
 
@@ -762,25 +769,24 @@ export default function DraggableCanvas({
           if (!physics) return null;
 
           return (
-            <div key={branch.name} data-card="true">
-              <CanvasNode
-                id={branch.name}
-                branch={branch}
-                position={physics.position}
-                isDragging={physics.isDragging}
-                scale={scale}
-                offset={offset}
-                isSpacePressed={isSpacePressed}
-                isExpanded={expandedCards.has(branch.name)}
-                isLoadingCommits={loadingCommits.has(branch.name)}
-                isDragTarget={dragTargetBranch === branch.name} // Use the drag target state
-                animationTime={animationTime} // Pass animation time for orbiting commits
-                onStartDrag={handleStartDrag}
-                onDrag={handleDrag}
-                onEndDrag={handleEndDrag}
-                onDoubleClick={handleDoubleClick}
-              />
-            </div>
+            <CanvasNode
+              key={branch.name}
+              id={branch.name}
+              branch={branch}
+              position={physics.position}
+              isDragging={physics.isDragging}
+              scale={scale}
+              offset={offset}
+              isSpacePressed={isSpacePressed}
+              isExpanded={expandedCards.has(branch.name)}
+              isLoadingCommits={loadingCommits.has(branch.name)}
+              isDragTarget={dragTargetBranch === branch.name} // Use the drag target state
+              animationTime={animationTime} // Pass animation time for orbiting commits
+              onStartDrag={handleStartDrag}
+              onDrag={handleDrag}
+              onEndDrag={handleEndDrag}
+              onDoubleClick={handleDoubleClick}
+            />
           );
         })}
 

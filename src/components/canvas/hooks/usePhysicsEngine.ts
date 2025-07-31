@@ -257,31 +257,46 @@ export const usePhysicsEngine = (
   
   // Start dragging a card
   const startDrag = useCallback((id: string, position: Position) => {
-    updateCardPhysics(id, {
-      isDragging: true,
-      lastDragPosition: position,
-      originalPosition: cardPhysics[id]?.position || position,
-      velocity: { x: 0, y: 0 }
+    setCardPhysics(prev => {
+      const card = prev[id];
+      return {
+        ...prev,
+        [id]: {
+          ...card,
+          isDragging: true,
+          lastDragPosition: position,
+          originalPosition: card?.position || position,
+          velocity: { x: 0, y: 0 }
+        }
+      };
     });
-  }, [updateCardPhysics, cardPhysics]);
+  }, []);
   
   // Update drag position
   const updateDrag = useCallback((id: string, position: Position) => {
-    const card = cardPhysics[id];
-    if (!card || !card.isDragging) return;
-    
-    // Calculate velocity based on position change
-    const velocity = card.lastDragPosition ? {
-      x: (position.x - card.lastDragPosition.x) * 0.5,
-      y: (position.y - card.lastDragPosition.y) * 0.5
-    } : { x: 0, y: 0 };
-    
-    updateCardPhysics(id, {
-      position,
-      lastDragPosition: position,
-      velocity
+    setCardPhysics(prev => {
+      const card = prev[id];
+      if (!card || !card.isDragging) {
+        return prev;
+      }
+      
+      // Calculate velocity based on position change
+      const velocity = card.lastDragPosition ? {
+        x: (position.x - card.lastDragPosition.x) * 0.5,
+        y: (position.y - card.lastDragPosition.y) * 0.5
+      } : { x: 0, y: 0 };
+      
+      return {
+        ...prev,
+        [id]: {
+          ...card,
+          position,
+          lastDragPosition: position,
+          velocity
+        }
+      };
     });
-  }, [cardPhysics, updateCardPhysics]);
+  }, []);
   
   // End dragging a card
   const endDrag = useCallback((id: string, returnToPosition?: Position) => {

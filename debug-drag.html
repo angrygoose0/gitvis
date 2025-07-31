@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Drag Functionality</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #000d1a;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        .debug-info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1000;
+        }
+        .node {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            background: #3b82f6;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            transition: transform 0.1s;
+        }
+        .node:hover {
+            transform: scale(1.1);
+        }
+        .node.dragging {
+            transform: scale(1.2);
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div class="debug-info">
+        <div>Drag Test</div>
+        <div id="status">Ready</div>
+        <div id="position">Position: (0, 0)</div>
+    </div>
+    
+    <div class="node" id="testNode" style="left: 100px; top: 100px;">
+        Node
+    </div>
+
+    <script>
+        const node = document.getElementById('testNode');
+        const status = document.getElementById('status');
+        const position = document.getElementById('position');
+        
+        let isDragging = false;
+        let dragOffset = { x: 0, y: 0 };
+        
+        node.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            node.classList.add('dragging');
+            
+            const rect = node.getBoundingClientRect();
+            dragOffset.x = e.clientX - rect.left - rect.width / 2;
+            dragOffset.y = e.clientY - rect.top - rect.height / 2;
+            
+            status.textContent = 'Dragging started';
+            
+            e.preventDefault();
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const x = e.clientX - dragOffset.x - 30; // 30 is half the node width
+                const y = e.clientY - dragOffset.y - 30; // 30 is half the node height
+                
+                node.style.left = x + 'px';
+                node.style.top = y + 'px';
+                
+                position.textContent = `Position: (${Math.round(x)}, ${Math.round(y)})`;
+                status.textContent = 'Dragging...';
+            }
+        });
+        
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                node.classList.remove('dragging');
+                status.textContent = 'Drag ended';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -127,15 +127,16 @@ const CanvasNodeComponent: React.FC<CanvasNodeProps> = ({
         if (rect) {
           const centerX = rect.left + rect.width / 2;
           const centerY = rect.top + rect.height / 2;
-          setDragOffset({
+          const currentDragOffset = {
             x: e.clientX - centerX,
             y: e.clientY - centerY
-          });
+          };
+          setDragOffset(currentDragOffset);
 
           // Set up mouse event handlers immediately with captured values
           const handleMouseMove = (moveEvent: MouseEvent) => {
-            // Convert screen coordinates to world coordinates
-            const worldPosition = mouseToWorld(moveEvent.clientX, moveEvent.clientY, scale, offset, dragOffset);
+            // Convert screen coordinates to world coordinates, accounting for drag offset
+            const worldPosition = mouseToWorld(moveEvent.clientX, moveEvent.clientY, scale, offset, currentDragOffset);
             onDrag(id, worldPosition);
           };
 
@@ -167,12 +168,14 @@ const CanvasNodeComponent: React.FC<CanvasNodeProps> = ({
     <div
       ref={nodeRef}
       className="absolute"
+      data-node-id={id} // Add this attribute for canvas interaction detection
       style={{
         left: `${screenPosition.x - scaledRadius}px`,
         top: `${screenPosition.y - scaledRadius}px`,
         width: `${scaledRadius * 2}px`,
         height: `${scaledRadius * 2}px`,
         cursor: isDragging ? 'move' : (isSpacePressed ? 'grab' : 'pointer'),
+        zIndex: isDragging ? 1000 : 1, // Ensure dragging nodes are on top
       }}
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}

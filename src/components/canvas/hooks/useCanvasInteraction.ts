@@ -128,7 +128,10 @@ export const useCanvasInteraction = (
     const target = e.target as HTMLElement;
     const isCard = target.closest('[data-node-id]') !== null;
     
-    // Only pan if space is pressed or if not clicking on a card
+    // Only pan if:
+    // 1. Space is pressed (pan mode), OR
+    // 2. Not clicking on a node (clicking on empty canvas)
+    // But never pan when clicking directly on a node unless space is pressed
     if (isSpacePressed || !isCard) {
       setIsPanning(true);
       setPanStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
